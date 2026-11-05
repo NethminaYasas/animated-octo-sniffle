@@ -9,6 +9,7 @@ import { Toaster } from "sonner";
 import { BoardNav } from "@/components/board-nav";
 import { MarkdownContent } from "@/components/markdown-content";
 import { PostActions } from "@/components/post-actions";
+import { UserHoverCard } from "@/components/user-hover-card";
 import { BOARDS } from "@/lib/boards";
 import { SEED_POSTS } from "@/lib/seed-posts";
 import {
@@ -66,7 +67,10 @@ function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
         </span>
         <span className="font-semibold text-ink">{post.boardName}</span>
         <span>•</span>
-        <span>Posted by {post.author}</span>
+        <span>
+          Posted by{" "}
+          <UserHoverCard username={post.author} initial={post.authorInitial} />
+        </span>
         <span>•</span>
         <span suppressHydrationWarning>{now ? formatRelativeTime(post.createdAt, now) : "just now"}</span>
         {post.isPreview && (

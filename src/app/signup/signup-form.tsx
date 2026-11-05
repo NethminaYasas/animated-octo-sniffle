@@ -11,6 +11,8 @@ import {
   TurnstileField,
   type TurnstileFieldHandle,
 } from "@/components/turnstile-field";
+import { UsernameAvailabilityHint } from "@/components/username-availability-hint";
+import { useUsernameAvailability } from "@/lib/auth/use-username-availability";
 import { normaliseUsername, usernameProblem } from "@/lib/auth/validation";
 
 import { signUpWithInvite } from "./actions";
@@ -27,6 +29,7 @@ export function SignupForm() {
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const usernameAvailability = useUsernameAvailability(username);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -37,6 +40,11 @@ export function SignupForm() {
 
     if (usernameError) {
       setError(usernameError);
+      return;
+    }
+
+    if (usernameAvailability === "taken") {
+      setError("That username is taken. Try another one.");
       return;
     }
 
@@ -147,6 +155,7 @@ export function SignupForm() {
             3-20 characters. English, Sinhala or Tamil letters, numbers and
             underscores; shown in lowercase.
           </p>
+          <UsernameAvailabilityHint status={usernameAvailability} />
         </div>
 
         <div>

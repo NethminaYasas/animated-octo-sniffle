@@ -42,13 +42,17 @@ export function useAuthUser() {
           return;
         }
 
-        setUser({
-          id: authUser.id,
-          email: authUser.email ?? null,
-          username: null,
-          role: "member",
-          isBanned: false,
-        });
+        setUser((current) =>
+          current && current.id === authUser.id
+            ? current
+            : {
+                id: authUser.id,
+                email: authUser.email ?? null,
+                username: null,
+                role: "member",
+                isBanned: false,
+              },
+        );
         setLoading(false);
 
         supabase
@@ -57,15 +61,30 @@ export function useAuthUser() {
           .eq("id", authUser.id)
           .maybeSingle()
           .then(({ data }) => {
-            if (active && data) {
-              setUser({
-                id: authUser.id,
-                email: authUser.email ?? null,
+            if (!active || !data) {
+              return;
+            }
+
+            setUser((current) => {
+              if (!current) {
+                return current;
+              }
+
+              if (
+                current.username === data.username &&
+                current.role === data.role &&
+                current.isBanned === data.is_banned
+              ) {
+                return current;
+              }
+
+              return {
+                ...current,
                 username: data.username,
                 role: data.role,
                 isBanned: data.is_banned,
-              });
-            }
+              };
+            });
           });
       };
 

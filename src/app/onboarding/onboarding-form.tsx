@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { AuthMessage } from "@/components/auth-message";
+import { UsernameAvailabilityHint } from "@/components/username-availability-hint";
+import { useUsernameAvailability } from "@/lib/auth/use-username-availability";
 import { normaliseUsername, usernameProblem } from "@/lib/auth/validation";
 
 import { completeOnboarding } from "./actions";
@@ -12,9 +14,11 @@ import { completeOnboarding } from "./actions";
 export function OnboardingForm({
   initialUsername,
   email,
+  userId,
 }: {
   initialUsername: string;
   email: string | null;
+  userId: string;
 }) {
   const router = useRouter();
 
@@ -23,6 +27,7 @@ export function OnboardingForm({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const usernameAvailability = useUsernameAvailability(username, userId);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -33,6 +38,11 @@ export function OnboardingForm({
 
     if (usernameError) {
       setError(usernameError);
+      return;
+    }
+
+    if (usernameAvailability === "taken") {
+      setError("That username is taken. Try another one.");
       return;
     }
 
@@ -103,6 +113,7 @@ export function OnboardingForm({
           3-20 characters. English, Sinhala or Tamil letters, numbers and
           underscores; shown in lowercase.
         </p>
+        <UsernameAvailabilityHint status={usernameAvailability} />
       </div>
 
       <div>

@@ -19,6 +19,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { PostActions } from "@/components/post-actions";
 import { ReactionBar } from "@/components/reaction-bar";
+import { UserHoverCard } from "@/components/user-hover-card";
 import { normaliseUsername } from "@/lib/auth/validation";
 import { BOARDS } from "@/lib/boards";
 import {
@@ -445,7 +446,13 @@ export function ThreadContent({ postId }: { postId: number }) {
                 {post.boardName}
               </Link>
               <span>•</span>
-              <span>Posted by {post.author}</span>
+              <span>
+                Posted by{" "}
+                <UserHoverCard
+                  username={post.author}
+                  initial={post.authorInitial}
+                />
+              </span>
               <span>•</span>
               <span suppressHydrationWarning>
                 {now ? formatRelativeTime(post.createdAt, now) : "just now"}
@@ -520,68 +527,82 @@ export function ThreadContent({ postId }: { postId: number }) {
                     data-comment-author={comment.author}
                     className="rounded border border-line bg-surface p-3 sm:p-4"
                   >
-                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted">
-                      <span className="grid size-5 place-items-center rounded-full bg-surface-muted text-[10px] font-bold text-muted">
-                        {comment.authorInitial.toUpperCase()}
-                      </span>
-                      <span className="font-semibold text-ink">
-                        {comment.author}
-                      </span>
-                      <span>•</span>
-                      <span suppressHydrationWarning>
-                        {now
-                          ? formatRelativeTime(comment.createdAt, now)
-                          : "just now"}
-                      </span>
-                    </div>
-
-                    {comment.replyToAuthor ? (
-                      <p className="mt-1.5 text-[11px] text-muted">
-                        Replying to{" "}
-                        <span className="font-semibold text-ink">
-                          @{comment.replyToAuthor}
+                    <div className="flex items-start gap-3">
+                      <UserHoverCard
+                        username={comment.author}
+                        initial={comment.authorInitial}
+                        className="flex w-16 shrink-0 flex-col items-center gap-1.5 sm:w-20"
+                      >
+                        <span
+                          className="grid size-11 place-items-center rounded-full bg-orange-700 text-base font-bold uppercase text-white sm:size-12"
+                          aria-hidden="true"
+                        >
+                          {comment.authorInitial}
                         </span>
-                      </p>
-                    ) : null}
+                        <span className="line-clamp-2 w-full break-words text-center text-xs font-semibold leading-tight text-ink sm:text-sm">
+                          {comment.author}
+                        </span>
+                      </UserHoverCard>
 
-                    <div className="mt-2">
-                      <MarkdownContent>{comment.body}</MarkdownContent>
-                    </div>
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="text-[11px] text-muted"
+                          suppressHydrationWarning
+                        >
+                          {now
+                            ? formatRelativeTime(comment.createdAt, now)
+                            : "just now"}
+                        </div>
 
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                      <ReactionBar
-                        targetType="comment"
-                        targetId={comment.id}
-                        author={comment.author}
-                        currentUsername={username}
-                      />
-                      {user || canModerate ? (
-                        <div className="flex items-center gap-3 text-[11px] font-semibold text-muted">
-                          {user && !user.isBanned ? (
-                            <button
-                              type="button"
-                              onClick={() => handleReply(comment)}
-                              className="flex items-center gap-1 transition-colors hover:text-ink"
-                              aria-label={`Reply to ${comment.author}`}
-                            >
-                              <Reply className="size-3.5" />
-                              Reply
-                            </button>
-                          ) : null}
-                          {canModerate ? (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteComment(comment)}
-                              className="flex items-center gap-1 text-red-600 transition-colors hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                              aria-label={`Delete comment by ${comment.author}`}
-                              title="Delete comment"
-                            >
-                              <Trash className="size-3.5" />
-                              Delete
-                            </button>
+                        {comment.replyToAuthor ? (
+                          <p className="mt-1.5 text-[11px] text-muted">
+                            Replying to{" "}
+                            <span className="font-semibold text-ink">
+                              @{comment.replyToAuthor}
+                            </span>
+                          </p>
+                        ) : null}
+
+                        <div className="mt-2">
+                          <MarkdownContent>{comment.body}</MarkdownContent>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <ReactionBar
+                            targetType="comment"
+                            targetId={comment.id}
+                            author={comment.author}
+                            currentUsername={username}
+                          />
+                          {user || canModerate ? (
+                            <div className="flex items-center gap-3 text-[11px] font-semibold text-muted">
+                              {user && !user.isBanned ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReply(comment)}
+                                  className="flex items-center gap-1 transition-colors hover:text-ink"
+                                  aria-label={`Reply to ${comment.author}`}
+                                >
+                                  <Reply className="size-3.5" />
+                                  Reply
+                                </button>
+                              ) : null}
+                              {canModerate ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteComment(comment)}
+                                  className="flex items-center gap-1 text-red-600 transition-colors hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                  aria-label={`Delete comment by ${comment.author}`}
+                                  title="Delete comment"
+                                >
+                                  <Trash className="size-3.5" />
+                                  Delete
+                                </button>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
-                      ) : null}
+                      </div>
                     </div>
                   </li>
                 ))}

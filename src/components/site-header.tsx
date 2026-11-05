@@ -2,7 +2,7 @@
 
 import { Bell, LogIn, Search, UserPlus, UserRound } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LogoutButton } from "@/components/logout-button";
 import { NotificationPanel } from "@/components/notification-panel";
@@ -29,6 +29,7 @@ export function SiteHeader() {
   const [user, setUser] = useState<HeaderUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsButtonRef = useRef<HTMLButtonElement>(null);
   const notifications = useNotifications(user?.name ?? null);
   const unread = notifications.reduce(
     (count, notification) => count + (notification.read ? 0 : 1),
@@ -71,7 +72,15 @@ export function SiteHeader() {
             : null;
         const fallbackName = authUser.email?.split("@")[0] ?? "member";
 
-        setUser({ id: authUser.id, name: metadataName ?? fallbackName });
+        // Keep the existing name when the same member re-emits an auth event
+        // (Supabase refreshes the token when the browser tab regains focus).
+        // Re-seeding from metadata would briefly swap the displayed username
+        // and make the header flicker.
+        setUser((current) =>
+          current && current.id === authUser.id
+            ? current
+            : { id: authUser.id, name: metadataName ?? fallbackName },
+        );
         setLoading(false);
 
         // The trigger may have appended a suffix to the requested username.
@@ -82,9 +91,17 @@ export function SiteHeader() {
           .eq("id", authUser.id)
           .maybeSingle()
           .then(({ data }) => {
-            if (active && data?.username) {
-              setUser({ id: authUser.id, name: data.username });
+            if (!active || !data?.username) {
+              return;
             }
+
+            setUser((current) => {
+              if (!current || current.name === data.username) {
+                return current;
+              }
+
+              return { id: authUser.id, name: data.username };
+            });
           });
       };
 
@@ -151,9 +168,9 @@ export function SiteHeader() {
             <>
               <div className="relative">
                 <button
+                  ref={notificationsButtonRef}
                   type="button"
                   onClick={() => setNotificationsOpen((open) => !open)}
-                  onMouseDown={(event) => event.stopPropagation()}
                   aria-expanded={notificationsOpen}
                   aria-controls="notification-panel"
                   aria-label={
@@ -181,6 +198,7 @@ export function SiteHeader() {
                     onClose={closeNotifications}
                     onMarkAllRead={handleMarkAllRead}
                     onOpen={handleOpenNotification}
+                    triggerRef={notificationsButtonRef}
                   />
                 ) : null}
               </div>

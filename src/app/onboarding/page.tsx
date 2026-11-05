@@ -85,5 +85,11 @@ async function OnboardingContent() {
       ? claimsData.claims.email
       : null;
 
-  return <OnboardingForm email={email} initialUsername={profile.username} />;
+  return (
+    <OnboardingForm
+      email={email}
+      initialUsername={profile.username}
+      userId={userId}
+    />
+  );
 }

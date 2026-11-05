@@ -9,7 +9,7 @@ import {
   Reply,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import {
   type NotificationKind,
@@ -31,11 +31,13 @@ export function NotificationPanel({
   onClose,
   onMarkAllRead,
   onOpen,
+  triggerRef,
 }: {
   notifications: SavedNotification[];
   onClose: () => void;
   onMarkAllRead: () => void;
   onOpen: (id: string) => void;
+  triggerRef?: RefObject<HTMLElement | null>;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState<Date | null>(null);
@@ -53,12 +55,19 @@ export function NotificationPanel({
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      // The bell button toggles the panel itself, so a press on it must not be
+      // treated as an outside click — otherwise it closes and instantly
+      // reopens on the following click.
       if (
-        panelRef.current &&
-        !panelRef.current.contains(event.target as Node)
+        panelRef.current?.contains(target) ||
+        triggerRef?.current?.contains(target)
       ) {
-        onClose();
+        return;
       }
+
+      onClose();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -74,7 +83,7 @@ export function NotificationPanel({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, triggerRef]);
 
   return (
     <div
