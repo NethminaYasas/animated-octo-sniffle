@@ -354,6 +354,13 @@ Apply these to every task.
   text so arbitrary HTML/styles do not enter the editor.
 - `hasRichText()` treats empty formatting shells as empty, so the Comment
   button stays disabled until real text or a rule is present.
+- Creating a thread or commenting requires a signed-in user. The create page
+  and the thread comment/reply UI render a login prompt for anonymous
+  visitors, with a `next` link back to the page. The localStorage prototype is
+  UI-gated; the RLS insert policies enforce the same rule once posting is
+  database-backed.
+- The local thread/comment author uses the signed-in profile username, falling
+  back to "you" if the profile row cannot be read.
 - The site baseline font size is 19px; `.markdown-body` is 1rem with a 1.7 line
   height so posts and comments are comfortable to read.
 - Embeds are limited to a whitelist: YouTube (privacy-enhanced nocookie),

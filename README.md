@@ -124,6 +124,8 @@ If you change `.env.local`, stop and restart the dev server.
 
 ## Writing posts and comments
 
+- Creating a thread or commenting requires a logged-in member. Logged-out
+  visitors see a login prompt with a link back to the page.
 - The post/comment editor is a visual rich-text editor with **Write / Preview**
   tabs. Write shows formatted text, not source markup; Preview shows the
   sanitized result.

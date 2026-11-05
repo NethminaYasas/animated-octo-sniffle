@@ -18,6 +18,7 @@ import { BackHomeButton } from "@/components/back-home-button";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { MarkdownContent } from "@/components/markdown-content";
 import { PostActions } from "@/components/post-actions";
+import { LoginGate } from "@/components/login-gate";
 import { SEED_POSTS } from "@/lib/seed-posts";
 import {
   loadPosts,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/feed-store";
 import { hasRichText } from "@/lib/rich-text";
 import { formatRelativeTime } from "@/lib/time";
+import { useAuthUser } from "@/lib/use-auth-user";
 
 function ForumLayout({
   activeBoard,
@@ -86,6 +88,7 @@ export default function ThreadPageClient() {
 }
 
 export function ThreadContent({ postId }: { postId: number }) {
+  const { user, loading: authLoading } = useAuthUser();
   const [post, setPost] = useState<SavedPost | null | undefined>(undefined);
   const [comments, setComments] = useState<SavedComment[]>([]);
   const [draft, setDraft] = useState("");
@@ -116,13 +119,15 @@ export function ThreadContent({ postId }: { postId: number }) {
 
   const handleSubmitComment = () => {
     const body = draft.trim();
-    if (!hasRichText(draft) || !post) return;
+    if (!user || !hasRichText(draft) || !post) return;
+
+    const authorName = user.username ?? "you";
 
     const comment: SavedComment = {
       id: Date.now(),
       postId: post.id,
-      author: "you",
-      authorInitial: "y",
+      author: authorName,
+      authorInitial: authorName.slice(0, 1).toLowerCase() || "y",
       body,
       createdAt: new Date().toISOString(),
     };
@@ -139,6 +144,10 @@ export function ThreadContent({ postId }: { postId: number }) {
   };
 
   const handleReply = (author: string) => {
+    if (!user) {
+      return;
+    }
+
     setDraft((current) =>
       current ? `${current}<br>@${author} ` : `@${author} `,
     );
@@ -231,35 +240,49 @@ export function ThreadContent({ postId }: { postId: number }) {
                 {comments.length} {comments.length === 1 ? "comment" : "comments"}
               </h2>
 
-              <form
-                className="mt-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleSubmitComment();
-                }}
-              >
-                <MarkdownEditor
-                  id="comment-body"
-                  rows={5}
-                  value={draft}
-                  onChange={setDraft}
-                  placeholder="What are your thoughts?"
-                  ariaLabel="Comment body"
-                  onSubmit={handleSubmitComment}
-                  onEditorReady={setComposer}
+              {authLoading ? (
+                <p className="mt-3 text-sm text-muted">
+                  Checking your account...
+                </p>
+              ) : user ? (
+                <form
+                  className="mt-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleSubmitComment();
+                  }}
+                >
+                  <MarkdownEditor
+                    id="comment-body"
+                    rows={5}
+                    value={draft}
+                    onChange={setDraft}
+                    placeholder="What are your thoughts?"
+                    ariaLabel="Comment body"
+                    onSubmit={handleSubmitComment}
+                    onEditorReady={setComposer}
+                  />
+                  <div className="mt-2 flex items-center justify-between">
+                    <p className="text-[11px] text-faint">
+                      Ctrl+Enter to comment
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={!hasRichText(draft)}
+                      className="flex items-center gap-1.5 rounded-full bg-orange-700 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Send className="size-3.5" />
+                      Comment
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <LoginGate
+                  next={`/t/${post.id}`}
+                  title="Log in to comment"
+                  description="Only members can reply to threads."
                 />
-                <div className="mt-2 flex items-center justify-between">
-                  <p className="text-[11px] text-faint">Ctrl+Enter to comment</p>
-                  <button
-                    type="submit"
-                    disabled={!hasRichText(draft)}
-                    className="flex items-center gap-1.5 rounded-full bg-orange-700 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Send className="size-3.5" />
-                    Comment
-                  </button>
-                </div>
-              </form>
+              )}
 
               <ol className="mt-4 space-y-3">
                 {comments.map((comment) => (
@@ -280,17 +303,19 @@ export function ThreadContent({ postId }: { postId: number }) {
                     <div className="mt-2">
                       <MarkdownContent>{comment.body}</MarkdownContent>
                     </div>
-                    <div className="mt-2 flex items-center gap-3 text-[11px] font-semibold text-muted">
-                      <button
-                        type="button"
-                        onClick={() => handleReply(comment.author)}
-                        className="flex items-center gap-1 transition-colors hover:text-ink"
-                        aria-label={`Reply to ${comment.author}`}
-                      >
-                        <Reply className="size-3.5" />
-                        Reply
-                      </button>
-                    </div>
+                    {user ? (
+                      <div className="mt-2 flex items-center gap-3 text-[11px] font-semibold text-muted">
+                        <button
+                          type="button"
+                          onClick={() => handleReply(comment.author)}
+                          className="flex items-center gap-1 transition-colors hover:text-ink"
+                          aria-label={`Reply to ${comment.author}`}
+                        >
+                          <Reply className="size-3.5" />
+                          Reply
+                        </button>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ol>

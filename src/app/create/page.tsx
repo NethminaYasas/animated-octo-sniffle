@@ -10,8 +10,10 @@ import { SiteHeader } from "@/components/site-header";
 import { BoardNav } from "@/components/board-nav";
 import { BackHomeButton } from "@/components/back-home-button";
 import { MarkdownEditor } from "@/components/markdown-editor";
+import { LoginGate } from "@/components/login-gate";
 import { BOARDS } from "@/lib/boards";
 import { savePost, type SavedPost } from "@/lib/feed-store";
+import { useAuthUser } from "@/lib/use-auth-user";
 
 function validBoardId(candidate: string | null): string {
   return BOARDS.some((board) => board.id === candidate) ? (candidate as string) : "general";
@@ -147,7 +149,7 @@ function BoardPicker({
   );
 }
 
-function CreatePostForm() {
+function CreatePostForm({ authorName }: { authorName: string }) {
   const router = useRouter();
 
   const [boardId, setBoardId] = useState("general");
@@ -176,8 +178,8 @@ function CreatePostForm() {
       boardId: board.id,
       boardName: board.name,
       boardInitial: board.initial,
-      author: "you",
-      authorInitial: "y",
+      author: authorName,
+      authorInitial: authorName.slice(0, 1).toLowerCase() || "y",
       title: trimmedTitle,
       content: content.trim(),
       createdAt: new Date().toISOString(),
@@ -267,6 +269,7 @@ function CreatePostForm() {
 
 export default function CreatePostPage() {
   const router = useRouter();
+  const { user, loading } = useAuthUser();
 
   const handleBoardNavSelect = (boardId: string | null) => {
     router.push(boardId ? `/?board=${encodeURIComponent(boardId)}` : "/");
@@ -288,12 +291,22 @@ export default function CreatePostPage() {
               Create a post
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Posts and comments are saved on this device until accounts and the
-              database are added. Use the toolbar to format text.
+              Posts and comments are saved on this device until database
+              posting is added. Use the toolbar to format text.
             </p>
           </div>
 
-          <CreatePostForm />
+          {loading ? (
+            <p className="mt-6 text-sm text-muted">Checking your account...</p>
+          ) : user ? (
+            <CreatePostForm authorName={user.username ?? "you"} />
+          ) : (
+            <LoginGate
+              next="/create"
+              title="Log in to create a post"
+              description="Only members can start a thread."
+            />
+          )}
         </section>
       </div>
 
