@@ -4,8 +4,11 @@ kaluwo is a Sri Lankan discussion forum in the style of
 [elakiri.com](https://elakiri.com): boards, threads and posts, built for a
 community that speaks Sinhala, Tamil and English.
 
-This repository is currently at **step 1: project foundation**. Authentication,
-database tables, moderation, uploads and the forum itself are not built yet.
+This repository is currently at **step 2: database schema**. The schema and
+its Row Level Security policies live in `supabase/migrations/` and must be
+applied to your Supabase project (see
+[supabase/README.md](./supabase/README.md)). Authentication, moderation,
+uploads and the live forum are still to be built.
 
 ## Tech stack
 
@@ -64,7 +67,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 The catbox and media-limit variables in `.env.example` are commented out and
 are for later steps. Leave them alone for now.
 
-### 4. Start the development server
+### 4. Apply the database schema
+
+Follow [supabase/README.md](./supabase/README.md). At minimum, paste
+`supabase/migrations/20261105000000_initial_schema.sql` into the Supabase SQL
+Editor and run it once. It creates the tables, RLS policies and the board rows.
+
+The generated TypeScript types are already committed at
+`src/lib/supabase/types.ts`. Regenerate them only after a schema change.
+
+### 5. Start the development server
 
 ```bash
 npm run dev
@@ -98,14 +110,17 @@ src/
     globals.css       Tailwind styles and light/dark colour tokens
     layout.tsx        Root layout, metadata, fonts and theme bootstrap
     page.tsx          Home page, forum shell and Supabase status banner
-  components/
-    theme-toggle.tsx  Light/dark mode button
+  components/         Header, board navigation, markdown editor and preview
   lib/
     supabase/
       client.ts       Supabase client for Client Components
       config.ts       Reads and validates the public env vars
       server.ts       Cookie-aware Supabase client for the server
       status.ts       Small read-only connection check for the home page
+      types.ts        Generated database types
+supabase/
+  migrations/         SQL schema and RLS policies
+  README.md           How to apply the schema and configure Auth URLs
 ```
 
 ## Troubleshooting the connection card
@@ -118,8 +133,9 @@ src/
   project URL, not a URL ending in `/rest/v1`.
 - **Could not reach Supabase** — check your internet connection and that the
   Supabase project is not paused.
-- The check calls Supabase's read-only `/auth/v1/settings` endpoint. The
-  application tables do not exist until step 2.
+- The check calls Supabase's read-only `/auth/v1/settings` endpoint. It does
+  not query the application tables, so it still succeeds before the database
+  migration is applied.
 
 ## Secrets warning
 

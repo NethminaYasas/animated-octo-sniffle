@@ -4,8 +4,10 @@ kaluwo is a Sri Lankan discussion forum in the style of
 [elakiri.com](https://elakiri.com). The repo is public: no real secrets, IPs,
 keys or personal data may be committed.
 
-**Current status:** Step 1 (project initialization) is complete. Supabase
-database tables, authentication and all other features are still to be built.
+**Current status:** Step 1 (project initialization) is complete. The step 2
+schema and RLS policies are written in
+`supabase/migrations/20261105000000_initial_schema.sql` and still have to be
+applied to the Supabase project. Authentication is the next feature to build.
 
 ## 1. What kaluwo is
 
@@ -67,7 +69,7 @@ configurable.
 
 ## 5. Data model
 
-The SQL is written in step 2. Planned tables:
+The SQL lives in `supabase/migrations/`. Tables:
 
 ### `profiles`
 
@@ -80,7 +82,7 @@ The SQL is written in step 2. Planned tables:
 
 ### `boards`
 
-- `id`
+- `id` — text slug used in URLs (`general`, `food`)
 - `name`
 - `description`
 - `sort_order`
@@ -93,6 +95,7 @@ The SQL is written in step 2. Planned tables:
 - `title`
 - `is_locked`
 - `is_pinned`
+- `is_deleted`
 - `created_at`
 - `last_post_at`
 
@@ -103,6 +106,8 @@ The SQL is written in step 2. Planned tables:
 - `author_id`
 - `content`
 - `reply_to_post_id`
+- `is_opening` — true for the thread's first post; reactions are not allowed
+  on it
 - `created_at`
 - `edited_at`
 - `is_deleted`
@@ -120,9 +125,8 @@ opening posts have no score.
 
 `like`, `laugh` and `wow` count as positive; `anger` and `dislike` count as
 negative. Reaction totals roll up to the comment author and can later feed
-into reputation. **Unresolved:** whether a user may add several different
-reactions to the same comment, or exactly one changeable reaction. The unique
-constraint will follow that decision.
+into reputation. A user has exactly one reaction per comment; choosing a
+different reaction updates the existing row (`unique (post_id, user_id)`).
 
 ### `reports`
 
@@ -251,3 +255,47 @@ Apply these to every task.
   shell paints immediately even if the project check is slow or unreachable.
 - The connection check is bounded by a 3-second timeout and returns a visible
   error state instead of hanging indefinitely.
+
+## Implementation decisions (step 2)
+
+- The schema is one migration:
+  `supabase/migrations/20261105000000_initial_schema.sql`. It is applied
+  through the Supabase SQL Editor (or `supabase db push`), not by hand-editing
+  tables.
+- `boards.id` is a text slug rather than a numeric id, so board URLs and the
+  existing `src/lib/boards.ts` ids stay stable.
+- `threads.is_deleted` was added for soft deletion. A deleted thread and its
+  posts are hidden from normal readers; the thread author and moderators still
+  see them.
+- `posts.is_opening` marks the thread's first post. A partial unique index
+  allows exactly one opening post per thread, and reactions are rejected on
+  opening posts by RLS.
+- Members can edit their own post content and soft-delete their own posts.
+  They cannot hard-delete, move a post, change its author, or change the
+  opening-post flag. Moderators can hard-delete.
+- Only moderators can update a thread row. This covers lock, pin, move,
+  soft-delete and hard-delete. Authors do not edit thread titles.
+- `reactions.kind` is the only column members may update, granted at the
+  column level, so a reaction cannot be moved to another post.
+- Reports are unique per `(post_id, reporter_id)`; reporting the same post
+  twice is rejected by the unique constraint instead of creating duplicates.
+- `media_assets` is unique per `(provider, file_key)`. Deleting a post sets
+  `post_id` to null rather than deleting the asset row, so cleanup can still
+  find the catbox file.
+- `author_id` on threads/posts is nullable and `on delete set null`, so
+  deleting an auth user keeps the content as an anonymous post.
+- RLS helpers are `SECURITY DEFINER` with a pinned `search_path`:
+  `is_banned()`, `is_moderator()` and `is_admin()`. They avoid recursion when
+  policies need to read `profiles`.
+- A trigger on `auth.users` creates the matching `profiles` row. The username
+  comes from sign-up metadata, is lowercased, stripped to
+  `[a-z0-9_]`, and gets a numeric suffix if it is already taken.
+- A profile trigger stops members changing their own `role`, `is_banned` or
+  `created_at`. Only admins change roles; moderators can ban members but not
+  admins.
+- The migration was checked against PostgreSQL 17 with a stubbed `auth`
+  schema: schema creation, profile trigger, RLS reads/writes, soft-delete
+  visibility, moderator overrides, reports and media removal all passed.
+- `src/lib/supabase/types.ts` is generated from the schema and committed so
+  the app type-checks without a Supabase login. Regenerate it after schema
+  changes with the command in `supabase/README.md`.
