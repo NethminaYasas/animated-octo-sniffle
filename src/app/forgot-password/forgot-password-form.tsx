@@ -84,8 +84,8 @@ export function ForgotPasswordForm() {
       {error ? <AuthMessage tone="error">{error}</AuthMessage> : null}
 
       <p className="text-sm text-muted">
-        Enter the email you used to sign up. We will send a link to choose a new
-        password.
+        Enter the Google email on your account. Invite-code accounts have no
+        email address, so they cannot reset a password this way.
       </p>
 
       <div>

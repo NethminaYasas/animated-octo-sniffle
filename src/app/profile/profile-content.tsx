@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { LogoutButton } from "@/components/logout-button";
+import { isInternalEmail } from "@/lib/auth/internal-email";
 import { createClient } from "@/lib/supabase/server";
 
 type ProfileRow = {
@@ -11,6 +12,7 @@ type ProfileRow = {
   role: "member" | "moderator" | "admin";
   is_banned: boolean;
   reaction_score: number;
+  onboarding_completed: boolean;
   created_at: string;
 };
 
@@ -38,7 +40,9 @@ export async function ProfileContent() {
 
   const { data, error: profileError } = await supabase
     .from("profiles")
-    .select("username, avatar_url, role, is_banned, reaction_score, created_at")
+    .select(
+      "username, avatar_url, role, is_banned, reaction_score, onboarding_completed, created_at",
+    )
     .eq("id", userId)
     .maybeSingle();
 
@@ -69,6 +73,10 @@ export async function ProfileContent() {
     );
   }
 
+  if (!profile.onboarding_completed) {
+    redirect("/onboarding");
+  }
+
   const joined = new Date(profile.created_at).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -86,7 +94,7 @@ export async function ProfileContent() {
             <h1 className="truncate text-xl font-bold tracking-tight text-ink">
               @{profile.username}
             </h1>
-            {email ? (
+            {email && !isInternalEmail(email) ? (
               <p className="truncate text-sm text-muted">{email}</p>
             ) : null}
           </div>
@@ -130,7 +138,7 @@ export async function ProfileContent() {
         <div>
           <dt className="text-xs font-medium text-faint">Login</dt>
           <dd className="mt-1 text-sm text-ink">
-            Username and password
+            Google or username + password
           </dd>
         </div>
       </dl>

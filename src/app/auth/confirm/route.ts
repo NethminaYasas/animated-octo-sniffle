@@ -5,8 +5,8 @@ import { safeRedirectPath } from "@/lib/auth/redirect";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Alternative email-confirmation handler for projects that use
- * {{ .TokenHash }} in their Supabase email templates. See supabase/README.md.
+ * Alternative password-reset handler for projects that use
+ * {{ .TokenHash }} in their Supabase email template. See supabase/README.md.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);

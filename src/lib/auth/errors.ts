@@ -22,14 +22,14 @@ export function authErrorMessage(error: AuthErrorLike): string {
     code === "invalid_credentials" ||
     lower.includes("invalid login credentials")
   ) {
-    return "Email or password is incorrect.";
+    return "Username or password is incorrect.";
   }
 
   if (
     code === "email_not_confirmed" ||
     lower.includes("email not confirmed")
   ) {
-    return "Confirm your email address before logging in. Check your inbox for the link.";
+    return "This account is not ready yet. Log in with Google or ask an admin for help.";
   }
 
   if (code.includes("captcha") || lower.includes("captcha")) {
@@ -40,7 +40,7 @@ export function authErrorMessage(error: AuthErrorLike): string {
     code === "user_already_exists" ||
     lower.includes("already registered")
   ) {
-    return "An account with this email already exists. Try logging in instead.";
+    return "That username is already in use. Try logging in instead.";
   }
 
   if (

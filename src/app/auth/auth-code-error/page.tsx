@@ -11,15 +11,15 @@ export default function AuthCodeErrorPage() {
   return (
     <AuthShell
       title="That link did not work"
-      subtitle="The confirmation or reset link is invalid, expired, or was opened in a different browser."
+      subtitle="The link is invalid, expired, or was opened in a different browser."
     >
       <div className="space-y-4 text-sm text-muted">
         <p>Try one of these:</p>
 
         <ul className="list-disc space-y-1 pl-5">
-          <li>Open the link from the same browser you used to sign up.</li>
+          <li>Log in with Google instead.</li>
+          <li>Open the link from the same browser you used to request it.</li>
           <li>Request a new password reset email.</li>
-          <li>Log in if your email is already confirmed.</li>
         </ul>
 
         <div className="flex flex-wrap gap-2 pt-1">

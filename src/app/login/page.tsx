@@ -13,7 +13,7 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Log in"
-      subtitle="Use the username and password you chose at sign-up."
+      subtitle="Use Google, or the username and password you chose when you joined."
     >
       <Suspense fallback={<p className="text-sm text-muted">Loading...</p>}>
         <LoginForm />

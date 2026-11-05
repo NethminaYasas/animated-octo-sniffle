@@ -5,8 +5,8 @@ kaluwo is a Sri Lankan discussion forum in the style of
 community that speaks Sinhala, Tamil and English.
 
 This repository now has the database schema and the authentication flow:
-username/password login, email verification, password reset and Cloudflare
-Turnstile. The schema and its Row Level Security policies live in
+Google sign-in, invite-only username/password sign-up, password reset and
+Cloudflare Turnstile. The schema and its Row Level Security policies live in
 `supabase/migrations/` and must be applied to your Supabase project (see
 [supabase/README.md](./supabase/README.md)). Moderation, uploads and the
 database-backed posting/reply UI are still to be built.
@@ -42,7 +42,8 @@ npm install
    `https://<project-ref>.supabase.co`.
 5. Copy the **anon public** key. Newer Supabase projects may call this the
    **publishable key**; either public key works with the variable name below.
-   Never use the **service_role** key in this app.
+   Never put the **service_role** key in a `NEXT_PUBLIC_*` variable or send it
+   to the browser; the server uses it separately for auth (step 5).
 
 ### 3. Create your local environment file
 
@@ -72,8 +73,8 @@ are for later steps. Leave them alone for now.
 
 Follow [supabase/README.md](./supabase/README.md). Run every file in
 `supabase/migrations/` in filename order in the Supabase SQL Editor. They
-create the tables, RLS policies, the username-login helper, reaction scores
-and the reply rules.
+create the tables, RLS policies, the username-login helper, reaction scores,
+the reply rules, Google onboarding and invite codes.
 
 The generated TypeScript types are already committed at
 `src/lib/supabase/types.ts`. Regenerate them only after a schema change.
@@ -82,20 +83,27 @@ The generated TypeScript types are already committed at
 
 1. Copy the **service role** key from Supabase **Project Settings -> API** into
    `.env.local` as `SUPABASE_SERVICE_ROLE_KEY`. It is used only on the server
-   to map a username to its email during login. Never expose it to the browser.
-2. Create a Cloudflare Turnstile widget at
+   for username login, invite-code sign-up and Google onboarding. Never expose
+   it to the browser.
+2. Enable **Authentication -> Providers -> Google** and paste your Google Cloud
+   OAuth Client ID and Secret. Add
+   `https://<project-ref>.supabase.co/auth/v1/callback` as an authorized
+   redirect URI in the Google Cloud Console.
+3. Create a Cloudflare Turnstile widget at
    [dash.cloudflare.com](https://dash.cloudflare.com/?to=/:account/turnstile)
    and add `localhost` and your production domain to its hostnames.
-3. Put the Turnstile **site key** in `.env.local` as
+4. Put the Turnstile **site key** in `.env.local` as
    `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and the **secret key** as
    `TURNSTILE_SECRET_KEY`. The app verifies the token on the server for login,
-   sign-up and password-reset requests.
-4. Leave Supabase's built-in CAPTCHA **off**. The app verifies Turnstile
+   invite sign-up and password-reset requests.
+5. Leave Supabase's built-in CAPTCHA **off**. The app verifies Turnstile
    itself, which avoids the request-IP problem with server-side username login.
-5. Confirm that **Authentication -> URL Configuration** includes
+6. Confirm that **Authentication -> URL Configuration** includes
    `http://localhost:3000/auth/callback` (and the production equivalent).
-6. Keep **Confirm email** on. Email is only used for verification and password
-   reset; members log in with a username and password.
+7. Turn **Confirm email** off. Google verifies Google accounts, and username
+   sign-up is gated by a single-use invite code instead of email.
+8. Generate invite codes in the Supabase SQL Editor with the query in
+   [supabase/README.md](./supabase/README.md#5-create-invite-codes).
 
 For local development, Cloudflare's always-pass test keys are:
 
@@ -157,13 +165,14 @@ the editor's Text size control applies to the text you select or type next.
 ```text
 src/
   app/
-    auth/             Email confirmation, callback and error routes
+    auth/             Google callback, password-reset confirm and error routes
     create/           Local post composer (database posting is a later step)
     forgot-password/  Reset request page and server action
-    login/            Username login page and server action
+    login/            Google + username login page and server action
+    onboarding/       Google account username/password setup
     profile/          Server-rendered member profile with reaction score
     reset-password/   New-password page after the email link
-    signup/           Registration page and server action
+    signup/           Invite-only registration page and server action
     globals.css       Tailwind styles and light/dark colour tokens
     layout.tsx        Root layout, metadata, fonts and theme bootstrap
     page.tsx          Home page and forum shell
@@ -179,8 +188,8 @@ src/
       types.ts        Generated database types
   proxy.ts            Next.js 16 proxy entry point
 supabase/
-  migrations/         SQL schema, RLS, username login, scores and replies
-  README.md           How to apply the schema and configure Auth URLs
+  migrations/         SQL schema, RLS, username login, scores, replies and invites
+  README.md           How to apply the schema, configure Google and make codes
 ```
 
 ## Troubleshooting auth setup
@@ -191,9 +200,14 @@ supabase/
   `TURNSTILE_SECRET_KEY` to `.env.local`.
 - **Sign-up says the database is not set up** — run the migrations in
   `supabase/migrations/` in filename order.
+- **“That invite code is not valid”** — generate a fresh code with the SQL in
+  [supabase/README.md](./supabase/README.md#5-create-invite-codes).
+- **Google login is not configured** — enable the Google provider in Supabase
+  and add the callback URL to both Supabase and Google Cloud.
 - **Email link says it is invalid or expired** — check the Supabase Site URL
-  and redirect URLs, or switch the email templates to the `/auth/confirm`
-  `token_hash` links (see [supabase/README.md](./supabase/README.md)).
+  and redirect URLs, or switch the password-reset template to the
+  `/auth/confirm` `token_hash` link (see
+  [supabase/README.md](./supabase/README.md)).
 - **Supabase project paused** — resume it in the dashboard.
 
 ## Secrets warning

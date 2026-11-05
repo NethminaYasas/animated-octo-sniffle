@@ -28,6 +28,46 @@ export type Database = {
         };
         Relationships: [];
       };
+      invite_codes: {
+        Row: {
+          code: string;
+          created_at: string;
+          created_by: string | null;
+          used_at: string | null;
+          used_by: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          code: string;
+          created_at?: string;
+          created_by?: string | null;
+          used_at?: string | null;
+          used_by?: string | null;
+        };
+        Update: {
+          code?: string;
+          created_at?: string;
+          created_by?: string | null;
+          used_at?: string | null;
+          used_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invite_codes_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "invite_codes_used_by_fkey";
+            columns: ["used_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ],
+      };
       media_assets: {
         Row: {
           created_at: string;
@@ -151,6 +191,7 @@ export type Database = {
           created_at: string;
           id: string;
           is_banned: boolean;
+          onboarding_completed: boolean;
           reaction_score: number;
           role: Database["public"]["Enums"]["user_role"];
           username: string;
@@ -161,6 +202,7 @@ export type Database = {
           created_at?: string;
           id: string;
           is_banned?: boolean;
+          onboarding_completed?: boolean;
           reaction_score?: number;
           role?: Database["public"]["Enums"]["user_role"];
           username: string;
@@ -170,6 +212,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           is_banned?: boolean;
+          onboarding_completed?: boolean;
           reaction_score?: number;
           role?: Database["public"]["Enums"]["user_role"];
           username?: string;
@@ -316,6 +359,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      consume_invite_code: {
+        Args: { p_code: string };
+        Returns: boolean;
+      };
       is_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_banned: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_moderator: { Args: Record<PropertyKey, never>; Returns: boolean };

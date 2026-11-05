@@ -12,7 +12,7 @@ export default function SignupPage() {
   return (
     <AuthShell
       title="Create an account"
-      subtitle="Your email is only used to verify the account and reset your password. You will log in with a username."
+      subtitle="Use Google, or join with a single-use invite code and a username and password."
     >
       <SignupForm />
     </AuthShell>

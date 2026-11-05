@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 
 import { AuthMessage } from "@/components/auth-message";
+import { GoogleAuthButton } from "@/components/google-auth-button";
 import {
   TurnstileField,
   type TurnstileFieldHandle,
@@ -25,6 +26,13 @@ export function LoginForm() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Relative paths only; the OAuth callback re-checks this value on the server.
+  const next = safeRedirectPath(
+    searchParams.get("next"),
+    "http://localhost",
+    "/",
+  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -66,8 +74,19 @@ export function LoginForm() {
   };
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      {error ? <AuthMessage tone="error">{error}</AuthMessage> : null}
+    <div className="space-y-4">
+      <GoogleAuthButton next={next} />
+
+      <div className="flex items-center gap-3" aria-hidden="true">
+        <span className="h-px flex-1 bg-line" />
+        <span className="text-[11px] font-medium uppercase tracking-wide text-faint">
+          or use a username
+        </span>
+        <span className="h-px flex-1 bg-line" />
+      </div>
+
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        {error ? <AuthMessage tone="error">{error}</AuthMessage> : null}
 
       <div>
         <label
@@ -142,6 +161,7 @@ export function LoginForm() {
           Create an account
         </Link>
       </p>
-    </form>
+      </form>
+    </div>
   );
 }

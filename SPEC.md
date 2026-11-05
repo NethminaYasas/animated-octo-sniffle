@@ -49,8 +49,8 @@ configurable.
 
 ## 4. Core features, in build order
 
-1. **Auth** — sign up, log in, log out, email verification, password reset,
-   profile page
+1. **Auth** — Google sign-in, invite-only username sign-up, log in, log out,
+   password reset, profile page
 2. **Database tables + Row Level Security** — profiles, boards, threads,
    posts, reactions, reports, media_assets
 3. **Read-only forum** — board list, thread list and thread page, with
@@ -79,6 +79,8 @@ The SQL lives in `supabase/migrations/`. Tables:
 - `avatar_url`
 - `role` — `member` / `moderator` / `admin`
 - `is_banned`
+- `onboarding_completed` — false until a Google account picks a username and
+  password
 - `reaction_score` — positive reactions minus negative reactions received on
   the member's comments
 - `created_at`
@@ -156,6 +158,14 @@ reaction updates the existing row (`unique (post_id, user_id)`).
 - `status` — `active` / `removed`
 - `created_at`
 
+### `invite_codes`
+
+- `code` — random, unique, single-use key
+- `created_by` — admin who generated it, if recorded
+- `used_by` — account that redeemed it
+- `used_at`
+- `created_at`
+
 ## 6. Media system (catbox.moe)
 
 - Catbox is used for images, videos and audio. Permanent uploads are capped
@@ -212,8 +222,9 @@ Apply these to every task.
   parameterised queries only, and render Markdown through a sanitiser.
 - Secrets live only in `.env.local`. Commit `.env.example` with empty
   placeholders. Never expose the Supabase service-role key to the browser.
-- Require email verification. Turnstile on sign-up, login and posting for new
-  users.
+- Google OAuth is the identity verification method. There is no email
+  verification. Username + password sign-up requires a single-use invite code.
+  Turnstile on sign-up, login and posting for new users.
 - Soft-delete content so moderators can review it.
 - Check official docs before using any library function that is not certain
   to exist. Do not invent APIs.
@@ -300,8 +311,9 @@ Apply these to every task.
 
 ## Implementation decisions (authentication)
 
-- Login is **username + password**. Email is collected at sign-up only for
-  verification and password reset.
+- Members log in with **Google** or with **username + password**. Google
+  accounts set a username and password during onboarding, so both methods work
+  for the same account. Invite-code accounts have no real email.
 - Supabase Auth signs in with an email, so a server action calls the
   service-role-only `resolve_login_email(username)` function and then signs in
   as the returned address. `SUPABASE_SERVICE_ROLE_KEY` stays on the server and
@@ -319,9 +331,10 @@ Apply these to every task.
 - `src/proxy.ts` refreshes the Supabase session on every request (Next 16
   renamed middleware to proxy). `/profile` is a server-rendered page and
   redirects to `/login?next=/profile` when there is no session.
-- Email confirmation uses `/auth/callback` (code exchange). `/auth/confirm`
-  supports `token_hash` email templates so links also work when opened in a
-  different browser.
+- Email/password confirmation is not used. `/auth/callback` exchanges the
+  Google OAuth code and redirects new accounts to `/onboarding`. `/auth/confirm`
+  still supports `token_hash` password-reset links if the email template is
+  changed.
 - The profile page shows username, email, role, status, joined date and
   reaction score.
 - `profiles.reaction_score` is maintained by recompute triggers on reactions
@@ -380,3 +393,39 @@ Apply these to every task.
 - The home, create and thread pages read the query string/path after mount
   instead of `useSearchParams`/`useParams`. This avoids the Next 16 Cache
   Components Suspense stall on these client-rendered pages.
+
+## Implementation decisions (Google auth and invite codes)
+
+- Email verification is removed. Google OAuth is the verified sign-up path;
+  Google accounts are treated as verified because Google has already confirmed
+  the address.
+- A Google account is not usable until the member picks a username and sets a
+  password. `/auth/callback` checks `profiles.onboarding_completed` and sends
+  new accounts to `/onboarding`. `/profile` repeats the check so a member
+  cannot skip onboarding by navigating directly.
+- Username + password sign-up needs a single-use invite code from the
+  `invite_codes` table. There are no RLS policies and no `anon`/`authenticated`
+  grants on the table; only the service role and the SQL Editor can read or
+  write it. Admins generate codes in the Supabase SQL Editor (documented in
+  `supabase/README.md`).
+- Invite codes are claimed with `consume_invite_code()`. The `UPDATE ... WHERE
+  used_at IS NULL` is atomic, so concurrent sign-ups cannot both use one code.
+  The code is claimed before the auth user is created; if creation fails, the
+  server action releases the claim by setting `used_at` back to null.
+- The profile trigger refuses any new auth user that is not a Google OAuth user
+  and does not carry `app_metadata.kaluwo_invite = true`. `app_metadata` is
+  writable only by the service role, so calling Supabase's public sign-up
+  endpoint directly with the anon key still fails the invite gate.
+- Invite-code accounts have no real email. Supabase Auth still needs an
+  email-shaped identifier, so they use
+  `<username>@login.kaluwo.invalid`. The profile page hides that address.
+- Google accounts keep their real Google email and can use the password-reset
+  email. Invite-code accounts cannot reset by email because their address
+  cannot receive mail.
+- Passwords for Google accounts are written with the service-role admin client
+  after the session user is checked. This adds a password without triggering a
+  confirmation email.
+- The username/password login path is unchanged: `resolve_login_email()` maps
+  a username to the account's real or internal email, then
+  `signInWithPassword()` verifies it. Both account types can therefore log in
+  with a username and password, and Google accounts can also use Google.
