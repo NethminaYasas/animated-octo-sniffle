@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
+import { useState, useEffect, Suspense, type ReactNode } from "react";
 import {
   Search,
   Home as HomeIcon,
@@ -9,20 +9,21 @@ import {
   Grid,
   Plus,
   MessageSquare,
-  Share2,
-  Bookmark,
   LogIn,
   UserPlus,
-  Moon,
-  Sun,
   AlertCircle,
   CheckCircle,
   Info,
-  X,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MarkdownContent } from "@/components/markdown-content";
+import { PostActions } from "@/components/post-actions";
+import { BOARDS } from "@/lib/boards";
+import { SEED_POSTS } from "@/lib/seed-posts";
+import { loadPosts, loadComments, type SavedPost } from "@/lib/feed-store";
+import { formatRelativeTime } from "@/lib/time";
 
 type StatusTone = "neutral" | "success" | "warning" | "error";
 
@@ -171,47 +172,7 @@ function SupabaseStatus() {
   );
 }
 
-const boards = [
-  { id: "announcements", name: "Announcements", initial: "A", description: "News from the kaluwo team" },
-  { id: "general", name: "General", initial: "G", description: "General discussion" },
-  { id: "technology", name: "Technology", initial: "T", description: "Tech talk and support" },
-  { id: "life-sri-lanka", name: "Life in Sri Lanka", initial: "L", description: "Daily life, news, and events" },
-  { id: "food", name: "Food", initial: "F", description: "Recipes, restaurants, and food culture" },
-  { id: "travel", name: "Travel", initial: "T", description: "Travel tips and destinations" },
-  { id: "sports", name: "Sports", initial: "S", description: "Cricket, rugby, and more" },
-];
-
 type SortOption = "new" | "hot" | "best";
-
-const mockPosts = [
-  {
-    id: 1,
-    boardId: "announcements",
-    boardName: "Announcements",
-    boardInitial: "A",
-    author: "kaluwo",
-    authorInitial: "k",
-    title: "Welcome to kaluwo",
-    content: "A Sri Lankan discussion forum for boards, threads and replies. This is a preview of how posts will appear — real posting and comments come in later steps.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    commentCount: 0,
-    isPreview: true,
-  },
-];
-
-function formatRelativeTime(dateString: string, now: Date): string {
-  const date = new Date(dateString);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 function SortTabs({ activeSort, onSortChange }: { activeSort: SortOption; onSortChange: (sort: SortOption) => void }) {
   const sorts: { value: SortOption; label: string }[] = [
@@ -241,38 +202,7 @@ function SortTabs({ activeSort, onSortChange }: { activeSort: SortOption; onSort
   );
 }
 
-function PostCard({ post, now }: { post: typeof mockPosts[0]; now: Date | null }) {
-  const [saved, setSaved] = useState(false);
-
-  const handleShare = async () => {
-    const url = `${window.location.origin}/t/${post.id}`;
-    const shareData = { title: post.title, text: post.content, url };
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (error) {
-        if ((error as DOMException)?.name !== "AbortError") {
-          toast.error("Couldn't share this post");
-        }
-      }
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link copied to clipboard", {
-        description: "Share it with others.",
-      });
-    } catch {
-      toast.error("Couldn't copy link");
-    }
-  };
-
-  const handleSave = () => {
-    const next = !saved;
-    setSaved(next);
-    toast.success(next ? "Saved for later" : "Removed from saved");
-  };
-
+function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
   return (
     <article className="mt-3 rounded border border-line bg-surface p-3 sm:p-4 hover:border-orange-700/30 dark:hover:border-orange-500/30 transition-colors">
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted">
@@ -290,48 +220,38 @@ function PostCard({ post, now }: { post: typeof mockPosts[0]; now: Date | null }
           </span>
         )}
       </div>
-      <h2 className="mt-2 block text-lg font-semibold leading-6 text-ink">
-        {post.title}
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-body line-clamp-3">
-        {post.content}
-      </p>
+      <Link href={`/t/${post.id}`} className="mt-2 block">
+        <h2 className="text-lg font-semibold leading-6 text-ink transition-colors hover:text-orange-700 dark:hover:text-orange-400">
+          {post.title}
+        </h2>
+      </Link>
+      {post.content.trim() !== "" ? (
+        <div className="mt-2 max-h-44 overflow-hidden">
+          <MarkdownContent>{post.content}</MarkdownContent>
+        </div>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-muted">
-        <span className="flex items-center gap-1">
+        <Link href={`/t/${post.id}`} className="flex items-center gap-1 transition-colors hover:text-ink dark:hover:text-ink">
           <MessageSquare className="size-3.5" />
           {post.commentCount} comments
-        </span>
-        <button
-          className="flex items-center gap-1 hover:text-ink dark:hover:text-ink transition-colors"
-          title="Share"
-          onClick={handleShare}
-          type="button"
-        >
-          <Share2 className="size-3.5" />
-          Share
-        </button>
-        <button
-          className={`flex items-center gap-1 transition-colors ${
-            saved
-              ? "text-orange-700 dark:text-orange-400"
-              : "hover:text-ink dark:hover:text-ink"
-          }`}
-          title={saved ? "Remove from saved" : "Save"}
-          aria-pressed={saved}
-          onClick={handleSave}
-          type="button"
-        >
-          <Bookmark
-            className={`size-3.5 ${saved ? "fill-orange-700 text-orange-700 dark:fill-orange-400 dark:text-orange-400" : ""}`}
-          />
-          {saved ? "Saved" : "Save"}
-        </button>
+        </Link>
+        <PostActions postId={post.id} title={post.title} body={post.content} />
       </div>
     </article>
   );
 }
 
-function PostList({ posts, sort, now }: { posts: typeof mockPosts; sort: SortOption; now: Date | null }) {
+function PostList({
+  posts,
+  sort,
+  now,
+  createPostHref,
+}: {
+  posts: SavedPost[];
+  sort: SortOption;
+  now: Date | null;
+  createPostHref: string;
+}) {
   let sortedPosts = [...posts];
 
   const nowTime = now?.getTime() ?? 1704067200000; // 2024-01-01T00:00:00Z
@@ -355,10 +275,17 @@ function PostList({ posts, sort, now }: { posts: typeof mockPosts; sort: SortOpt
   if (sortedPosts.length === 0) {
     return (
       <div className="mt-3 rounded border border-dashed border-line bg-surface px-4 py-10 text-center">
-        <p className="text-sm font-semibold text-ink">No posts yet</p>
+        <p className="text-sm font-semibold text-ink">Nothing here yet</p>
         <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted">
-          Once boards and posting are added, threads will show up here.
+          Be the first to share something with this community.
         </p>
+        <Link
+          href={createPostHref}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-700 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-orange-800"
+        >
+          <Plus className="size-3.5" />
+          Create a post
+        </Link>
       </div>
     );
   }
@@ -424,7 +351,7 @@ function BoardNav({ activeBoard, onBoardChange }: { activeBoard: string | null; 
       <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
         Boards
       </p>
-      {boards.map((board) => (
+      {BOARDS.map((board) => (
         <button
           key={board.id}
           className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-sm text-left transition-colors ${
@@ -440,8 +367,8 @@ function BoardNav({ activeBoard, onBoardChange }: { activeBoard: string | null; 
           <span className="truncate">{board.name}</span>
         </button>
       ))}
-      <p className="px-3 pt-3 text-[11px] leading-5 text-muted">
-        Boards open when the database is added.
+      <p className="px-3 pt-3 text-[11px] leading-5 text-faint">
+        Posts and comments are stored on this device until the database ships.
       </p>
     </nav>
   );
@@ -450,14 +377,11 @@ function BoardNav({ activeBoard, onBoardChange }: { activeBoard: string | null; 
 export default function Home() {
   const [activeSort, setActiveSort] = useState<SortOption>("new");
   const [activeBoard, setActiveBoard] = useState<string | null>(null);
-  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [createdPosts, setCreatedPosts] = useState<SavedPost[]>([]);
+  const [commentCounts, setCommentCounts] = useState<Record<number, number>>({});
   const [now, setNow] = useState<Date | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const createPostButtonRef = useRef<HTMLButtonElement>(null);
-  const createPostModalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMounted(true);
     const currentDate = new Date();
     setNow(currentDate);
     const interval = setInterval(() => setNow(new Date()), 60_000);
@@ -465,55 +389,27 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!showCreatePost) return;
+    const saved = loadPosts();
+    setCreatedPosts(saved);
+    const counts: Record<number, number> = {};
+    for (const post of [...SEED_POSTS, ...saved]) {
+      counts[post.id] = loadComments(post.id).length;
+    }
+    setCommentCounts(counts);
+  }, []);
 
-    const modal = createPostModalRef.current;
-    if (!modal) return;
-
-    const focusable = Array.from(
-      modal.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])',
-      ),
-    );
-
-    focusable[0]?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setShowCreatePost(false);
-        return;
-      }
-
-      if (event.key !== "Tab" || focusable.length === 0) return;
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      createPostButtonRef.current?.focus();
-    };
-  }, [showCreatePost]);
+  const feed = [...SEED_POSTS, ...createdPosts].map((post) => ({
+    ...post,
+    commentCount: commentCounts[post.id] ?? post.commentCount,
+  }));
 
   const filteredPosts = activeBoard
-    ? mockPosts.filter((p) => p.boardId === activeBoard)
-    : mockPosts;
+    ? feed.filter((p) => p.boardId === activeBoard)
+    : feed;
 
-  const handleCreatePost = () => {
-    // Auth is not implemented yet — open the preview modal directly.
-    // Actual publishing will require a signed-in account once auth ships.
-    setShowCreatePost(true);
-  };
+  const createPostHref = activeBoard
+    ? `/create?board=${encodeURIComponent(activeBoard)}`
+    : "/create";
 
   const handleAuthClick = (action: "login" | "signup") => {
     toast.info(`${action === "login" ? "Log in" : "Sign up"} functionality`, {
@@ -592,7 +488,7 @@ export default function Home() {
             >
               Home
             </button>
-            {boards.map((board) => (
+            {BOARDS.map((board) => (
               <button
                 key={board.id}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
@@ -610,24 +506,22 @@ export default function Home() {
             <div>
               <h1 className="text-lg font-semibold tracking-tight text-ink">
                 {activeBoard
-                  ? boards.find((b) => b.id === activeBoard)?.name || "Board"
+                  ? BOARDS.find((b) => b.id === activeBoard)?.name || "Board"
                   : "Home"}
               </h1>
               <p className="text-xs text-muted">
                 {activeBoard
-                  ? boards.find((b) => b.id === activeBoard)?.description || "Board description"
+                  ? BOARDS.find((b) => b.id === activeBoard)?.description || "Board description"
                   : "The front page of kaluwo"}
               </p>
             </div>
-            <button
-              ref={createPostButtonRef}
-              className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted hover:bg-surface-muted hover:text-ink transition-colors"
-              type="button"
-              onClick={handleCreatePost}
+            <Link
+              href={createPostHref}
+              className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-surface-muted hover:text-ink"
             >
               <Plus className="size-3.5" />
               Create post
-            </button>
+            </Link>
           </div>
 
           <Suspense
@@ -644,60 +538,15 @@ export default function Home() {
 
           <SortTabs activeSort={activeSort} onSortChange={setActiveSort} />
 
-          <PostList posts={filteredPosts} sort={activeSort} now={now} />
+          <PostList
+            posts={filteredPosts}
+            sort={activeSort}
+            now={now}
+            createPostHref={createPostHref}
+          />
 
         </section>
       </div>
-
-      {showCreatePost && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setShowCreatePost(false)}
-        >
-          <div
-            ref={createPostModalRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-post-title"
-            className="w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h2 id="create-post-title" className="text-lg font-semibold text-ink">Create Post (Preview)</h2>
-              <button
-                className="text-muted hover:text-ink transition-colors"
-                onClick={() => setShowCreatePost(false)}
-                aria-label="Close"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            <p className="mt-2 text-sm text-muted">Posting functionality arrives in a later step. You will need to log in to publish.</p>
-            <div className="mt-4 space-y-3">
-              <div>
-                <label htmlFor="post-board" className="block text-xs font-medium text-muted mb-1">Board</label>
-                <select id="post-board" className="w-full rounded border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-orange-700">
-                  {boards.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="post-title" className="block text-xs font-medium text-muted mb-1">Title</label>
-                <input id="post-title" type="text" className="w-full rounded border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-orange-700" placeholder="What's on your mind?" />
-              </div>
-              <div>
-                <label htmlFor="post-content" className="block text-xs font-medium text-muted mb-1">Content</label>
-                <textarea id="post-content" rows={6} className="w-full rounded border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-orange-700" placeholder="Write your post here... (Markdown supported)" />
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-muted hover:bg-surface-muted" onClick={() => setShowCreatePost(false)}>Cancel</button>
-              <button className="rounded-full bg-orange-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-800" disabled>Post (Disabled)</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <Toaster
         position="top-right"
