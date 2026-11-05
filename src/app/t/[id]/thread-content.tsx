@@ -12,8 +12,8 @@ import {
 import { MessageSquare, Reply, Send, TextQuote, Trash, X } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
-import { BoardNav } from "@/components/board-nav";
 import { BackHomeButton } from "@/components/back-home-button";
+import { ForumShell } from "@/components/forum-shell";
 import { LoginGate } from "@/components/login-gate";
 import { MarkdownContent } from "@/components/markdown-content";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -27,6 +27,7 @@ import {
   deletePost,
   isPostDeleted,
   loadComments,
+  loadPostSavers,
   loadPosts,
   saveComment,
   type SavedComment,
@@ -62,20 +63,9 @@ function ForumLayout({
   activeBoard?: string | null;
   children: ReactNode;
 }) {
-  const router = useRouter();
-  const handleBoardNavSelect = (boardId: string | null) => {
-    router.push(boardId ? `/?board=${encodeURIComponent(boardId)}` : "/");
-  };
-
   return (
-    <main className="flex flex-1 flex-col">
-      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
-        <div className="hidden lg:block">
-          <BoardNav activeBoard={activeBoard} onBoardChange={handleBoardNavSelect} />
-        </div>
-
-        <section className="min-w-0">{children}</section>
-      </div>
+    <>
+      <ForumShell activeBoard={activeBoard}>{children}</ForumShell>
 
       <Toaster
         position="top-right"
@@ -89,7 +79,7 @@ function ForumLayout({
           },
         }}
       />
-    </main>
+    </>
   );
 }
 
@@ -209,6 +199,14 @@ export function ThreadContent({ postId }: { postId: number }) {
     for (const mentioned of extractMentions(body)) {
       if (!recipients.has(mentioned)) {
         recipients.set(mentioned, "mention");
+      }
+    }
+
+    // Members who saved this post hear about new comments too. They keep a
+    // reply/quote/mention notification when they already earned one.
+    for (const saver of loadPostSavers(post.id)) {
+      if (!recipients.has(saver)) {
+        recipients.set(saver, "saved");
       }
     }
 
@@ -487,6 +485,7 @@ export function ThreadContent({ postId }: { postId: number }) {
                 postId={post.id}
                 title={post.title}
                 body={post.content}
+                username={username}
               />
               {canModerate ? (
                 <button

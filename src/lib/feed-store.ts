@@ -4,6 +4,8 @@
  * working when storage is unavailable (private mode, quota exceeded).
  */
 
+import { normaliseUsername } from "@/lib/auth/validation";
+
 export type SavedPost = {
   id: number;
   boardId: string;
@@ -33,6 +35,7 @@ export type SavedComment = {
 const POSTS_KEY = "kaluwo:posts";
 const COMMENTS_KEY = "kaluwo:comments";
 const SAVED_KEY = "kaluwo:saved";
+const SAVED_BY_KEY = "kaluwo:saved-by";
 const DELETED_POSTS_KEY = "kaluwo:deleted-posts";
 const DELETED_COMMENTS_KEY = "kaluwo:deleted-comments";
 
@@ -98,14 +101,76 @@ export function loadSavedIds(): number[] {
   return Array.isArray(ids) ? ids : [];
 }
 
-export function setSavedId(id: number, saved: boolean): boolean {
+/**
+ * Post id → usernames that saved it on this device. Saved posts themselves
+ * stay in one list (so the button state is shared), but this records who
+ * pressed Save so new comments can notify them.
+ */
+function readSavedBy(): Record<string, string[]> {
+  const raw = readJson<unknown>(SAVED_BY_KEY, {});
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+
+  const byPost: Record<string, string[]> = {};
+
+  for (const [postId, savers] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(savers)) {
+      continue;
+    }
+
+    const names = savers.filter(
+      (name): name is string => typeof name === "string" && name !== "",
+    );
+
+    if (names.length > 0) {
+      byPost[postId] = names;
+    }
+  }
+
+  return byPost;
+}
+
+/** Members who saved this post on this device. */
+export function loadPostSavers(postId: number): string[] {
+  return readSavedBy()[String(postId)] ?? [];
+}
+
+export function setSavedId(
+  id: number,
+  saved: boolean,
+  username?: string | null,
+): boolean {
   const ids = new Set(loadSavedIds());
   if (saved) {
     ids.add(id);
   } else {
     ids.delete(id);
   }
-  return writeJson(SAVED_KEY, [...ids]);
+
+  if (!writeJson(SAVED_KEY, [...ids])) {
+    return false;
+  }
+
+  const member = username ? normaliseUsername(username) : "";
+
+  if (member || !saved) {
+    const byPost = readSavedBy();
+    const key = String(id);
+
+    if (saved && member) {
+      byPost[key] = [...new Set([...(byPost[key] ?? []), member])];
+    } else {
+      // The saved list is shared per device, so unsaving clears the post for
+      // everyone — and nobody should keep receiving "saved post" alerts.
+      delete byPost[key];
+    }
+
+    writeJson(SAVED_BY_KEY, byPost);
+  }
+
+  return true;
 }
 
 function loadDeletedIds(key: string): number[] {

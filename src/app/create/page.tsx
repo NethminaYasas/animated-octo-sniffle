@@ -6,8 +6,8 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, Check, Send } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
-import { BoardNav } from "@/components/board-nav";
 import { BackHomeButton } from "@/components/back-home-button";
+import { ForumShell } from "@/components/forum-shell";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { LoginGate } from "@/components/login-gate";
 import { normaliseUsername } from "@/lib/auth/validation";
@@ -292,22 +292,12 @@ function CreatePostForm({ authorName }: { authorName: string }) {
 }
 
 export default function CreatePostPage() {
-  const router = useRouter();
   const { user, loading } = useAuthUser();
 
-  const handleBoardNavSelect = (boardId: string | null) => {
-    router.push(boardId ? `/?board=${encodeURIComponent(boardId)}` : "/");
-  };
-
   return (
-    <main className="flex flex-1 flex-col">
-      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
-        <div className="hidden lg:block">
-          <BoardNav activeBoard={undefined} onBoardChange={handleBoardNavSelect} />
-        </div>
-
-        <section className="min-w-0">
-          <BackHomeButton />
+    <>
+      <ForumShell activeBoard={undefined}>
+        <BackHomeButton />
           <div className="border-b border-line pb-3">
             <h1 className="text-lg font-semibold tracking-tight text-ink">
               Create a post
@@ -341,8 +331,7 @@ export default function CreatePostPage() {
               description="Only members can start a thread."
             />
           )}
-        </section>
-      </div>
+      </ForumShell>
 
       <Toaster
         position="top-right"
@@ -356,6 +345,6 @@ export default function CreatePostPage() {
           },
         }}
       />
-    </main>
+    </>
   );
 }

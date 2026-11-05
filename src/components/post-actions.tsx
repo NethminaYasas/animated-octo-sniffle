@@ -10,10 +10,12 @@ export function PostActions({
   postId,
   title,
   body,
+  username,
 }: {
   postId: number;
   title: string;
   body: string;
+  username?: string | null;
 }) {
   const [saved, setSaved] = useState(false);
 
@@ -50,7 +52,7 @@ export function PostActions({
   const handleSave = () => {
     const next = !saved;
     setSaved(next);
-    if (!setSavedId(postId, next)) {
+    if (!setSavedId(postId, next, username)) {
       setSaved(saved); // roll back when storage is unavailable
       toast.error("Couldn't update saved posts", {
         description: "Browser storage is unavailable or full.",

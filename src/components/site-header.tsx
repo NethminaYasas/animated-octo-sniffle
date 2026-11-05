@@ -2,9 +2,15 @@
 
 import { Bell, LogIn, Search, UserPlus, UserRound } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
-import { LogoutButton } from "@/components/logout-button";
 import { NotificationPanel } from "@/components/notification-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -25,9 +31,54 @@ type HeaderUser = {
   name: string;
 };
 
+// The header renders on the server before the session cookie is read, so on
+// every refresh it starts without a member. Caching the last resolved member
+// lets the first client render show the real name instead of a skeleton that
+// is replaced a moment later.
+const HEADER_USER_KEY = "kaluwo:header-user";
+
+function readCachedHeaderUser(): HeaderUser | null {
+  try {
+    const raw = window.localStorage.getItem(HEADER_USER_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as HeaderUser).id === "string" &&
+      typeof (parsed as HeaderUser).name === "string"
+    ) {
+      return { id: (parsed as HeaderUser).id, name: (parsed as HeaderUser).name };
+    }
+  } catch {
+    // An unreadable cache is ignored; the session is still the source of truth.
+  }
+
+  return null;
+}
+
+function writeCachedHeaderUser(user: HeaderUser | null) {
+  try {
+    if (user) {
+      window.localStorage.setItem(HEADER_USER_KEY, JSON.stringify(user));
+    } else {
+      window.localStorage.removeItem(HEADER_USER_KEY);
+    }
+  } catch {
+    // Best effort only.
+  }
+}
+
 export function SiteHeader() {
+  const router = useRouter();
   const [user, setUser] = useState<HeaderUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const cachedUserRef = useRef<HeaderUser | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsButtonRef = useRef<HTMLButtonElement>(null);
   const notifications = useNotifications(user?.name ?? null);
@@ -50,6 +101,15 @@ export function SiteHeader() {
   useEffect(() => {
     let active = true;
     let unsubscribe: (() => void) | undefined;
+
+    // Show the last member this browser saw while the session loads. The
+    // session still wins, so an expired cookie falls back to logged-out.
+    const cachedUser = readCachedHeaderUser();
+    if (cachedUser) {
+      cachedUserRef.current = cachedUser;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- avoid the skeleton flash on refresh
+      setUser((current) => current ?? cachedUser);
+    }
 
     try {
       const supabase = createClient();
@@ -74,13 +134,21 @@ export function SiteHeader() {
 
         // Keep the existing name when the same member re-emits an auth event
         // (Supabase refreshes the token when the browser tab regains focus).
-        // Re-seeding from metadata would briefly swap the displayed username
-        // and make the header flicker.
-        setUser((current) =>
-          current && current.id === authUser.id
-            ? current
-            : { id: authUser.id, name: metadataName ?? fallbackName },
-        );
+        // The cached name is preferred over metadata so a suffix the trigger
+        // appended does not flash before the canonical value arrives.
+        setUser((current) => {
+          if (current && current.id === authUser.id) {
+            return current;
+          }
+
+          const cached = cachedUserRef.current;
+
+          if (cached && cached.id === authUser.id) {
+            return cached;
+          }
+
+          return { id: authUser.id, name: metadataName ?? fallbackName };
+        });
         setLoading(false);
 
         // The trigger may have appended a suffix to the requested username.
@@ -124,7 +192,7 @@ export function SiteHeader() {
 
       unsubscribe = () => subscription.subscription.unsubscribe();
     } catch {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- auth is unavailable, so stop the skeleton
+      // Auth is unavailable, so stop the skeleton.
       setLoading(false);
     }
 
@@ -134,9 +202,23 @@ export function SiteHeader() {
     };
   }, []);
 
+  // Persist the resolved member so the next refresh can paint the real name
+  // immediately. Logging out clears the entry.
+  useEffect(() => {
+    if (!loading) {
+      writeCachedHeaderUser(user);
+    }
+  }, [loading, user]);
+
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    router.push(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
+  };
+
   return (
     <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface">
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-3 sm:px-4">
+      <div className="relative mx-auto flex h-14 max-w-[90rem] items-center gap-3 px-3 sm:px-4">
         <Link
           aria-label="kaluwo home"
           className="flex shrink-0 items-center gap-2"
@@ -150,20 +232,40 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <div className="ml-auto hidden min-w-0 flex-1 justify-center px-4 md:flex">
-          <div className="flex h-9 w-full max-w-lg items-center gap-2 rounded-full border border-line bg-surface-muted px-3 text-sm text-muted">
-            <Search className="size-4 shrink-0" />
-            <span className="truncate">Search kaluwo</span>
-            <span className="ml-auto shrink-0 text-[0.65rem] font-semibold uppercase tracking-wide text-faint">
-              Soon
-            </span>
-          </div>
+        {/* Below xl the bar sits in the flex row (its left edge is pinned to
+            the logo). From xl up it is centred against the header itself, so
+            auth controls loading in never nudges it sideways. */}
+        <div className="hidden min-w-0 flex-1 md:flex xl:pointer-events-none xl:absolute xl:left-1/2 xl:w-[32rem] xl:-translate-x-1/2">
+          <form
+            role="search"
+            onSubmit={handleSearch}
+            className="pointer-events-auto flex h-9 w-full max-w-lg items-center gap-2 rounded-full border border-line bg-surface-muted px-3 text-sm text-muted transition-colors focus-within:border-orange-700/40 focus-within:bg-surface focus-within:text-ink dark:focus-within:border-orange-500/40"
+          >
+            <Search className="size-4 shrink-0" aria-hidden="true" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search kaluwo"
+              aria-label="Search kaluwo"
+              enterKeyHint="search"
+              className="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-muted focus:outline-none"
+            />
+          </form>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-2 md:w-[15rem] xl:w-auto">
+          <Link
+            href="/search"
+            aria-label="Search kaluwo"
+            title="Search"
+            className="grid size-8 place-items-center rounded-full border border-line text-muted transition-colors hover:bg-surface-muted hover:text-ink md:hidden"
+          >
+            <Search className="size-4" />
+          </Link>
           <ThemeToggle />
 
-          {loading ? (
+          {loading && !user ? (
             <span
               aria-hidden="true"
               className="h-8 w-24 animate-pulse rounded-full bg-surface-muted"
@@ -216,7 +318,6 @@ export function SiteHeader() {
                   @{user.name}
                 </span>
               </Link>
-              <LogoutButton compact />
             </>
           ) : (
             <>

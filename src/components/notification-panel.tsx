@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   AtSign,
   Bell,
+  Bookmark,
   CheckCheck,
   MessageSquareQuote,
   Reply,
@@ -24,6 +25,7 @@ const KIND_META: Record<
   reply: { label: "replied to you", Icon: Reply },
   quote: { label: "quoted you", Icon: MessageSquareQuote },
   mention: { label: "mentioned you", Icon: AtSign },
+  saved: { label: "commented on a post you saved", Icon: Bookmark },
 };
 
 export function NotificationPanel({
@@ -114,7 +116,8 @@ export function NotificationPanel({
             You&apos;re all caught up
           </p>
           <p className="mx-auto mt-1 max-w-56 text-xs leading-5 text-muted">
-            Replies, quotes and @mentions will appear here.
+            Replies, quotes, @mentions and comments on posts you saved will
+            appear here.
           </p>
         </div>
       ) : (

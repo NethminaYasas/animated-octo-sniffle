@@ -4,7 +4,12 @@ import { useMemo, useSyncExternalStore } from "react";
 
 import { normaliseUsername } from "@/lib/auth/validation";
 
-export const NOTIFICATION_KINDS = ["reply", "quote", "mention"] as const;
+export const NOTIFICATION_KINDS = [
+  "reply",
+  "quote",
+  "mention",
+  "saved",
+] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -61,7 +66,8 @@ function isNotification(value: unknown): value is SavedNotification {
     typeof notification.actor === "string" &&
     (notification.kind === "reply" ||
       notification.kind === "quote" ||
-      notification.kind === "mention") &&
+      notification.kind === "mention" ||
+      notification.kind === "saved") &&
     typeof notification.threadId === "number" &&
     typeof notification.threadTitle === "string" &&
     (notification.commentId === null ||

@@ -88,9 +88,6 @@ export function BoardNav({
           </button>
         );
       })}
-      <p className="px-3 pt-3 text-[11px] leading-5 text-faint">
-        Posts and comments are stored on this device until the database ships.
-      </p>
     </nav>
   );
 }

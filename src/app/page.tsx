@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { Plus, MessageSquare } from "lucide-react";
 import { Toaster } from "sonner";
 
-import { BoardNav } from "@/components/board-nav";
+import { ForumShell } from "@/components/forum-shell";
 import { MarkdownContent } from "@/components/markdown-content";
 import { PostActions } from "@/components/post-actions";
 import { UserHoverCard } from "@/components/user-hover-card";
@@ -20,6 +20,7 @@ import {
   type SavedPost,
 } from "@/lib/feed-store";
 import { formatRelativeTime } from "@/lib/time";
+import { useAuthUser } from "@/lib/use-auth-user";
 
 type SortOption = "new" | "hot" | "best";
 
@@ -51,7 +52,15 @@ function SortTabs({ activeSort, onSortChange }: { activeSort: SortOption; onSort
   );
 }
 
-function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
+function PostCard({
+  post,
+  now,
+  username,
+}: {
+  post: SavedPost;
+  now: Date | null;
+  username: string | null;
+}) {
   const board = BOARDS.find((candidate) => candidate.id === post.boardId);
   const BoardIcon = board?.icon;
 
@@ -94,7 +103,12 @@ function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
           <MessageSquare className="size-3.5" />
           {post.commentCount} comments
         </Link>
-        <PostActions postId={post.id} title={post.title} body={post.content} />
+        <PostActions
+          postId={post.id}
+          title={post.title}
+          body={post.content}
+          username={username}
+        />
       </div>
     </article>
   );
@@ -105,11 +119,13 @@ function PostList({
   sort,
   now,
   createPostHref,
+  username,
 }: {
   posts: SavedPost[];
   sort: SortOption;
   now: Date | null;
   createPostHref: string;
+  username: string | null;
 }) {
   const sortedPosts = [...posts];
 
@@ -152,7 +168,7 @@ function PostList({
   return (
     <div className="mt-3 space-y-0">
       {sortedPosts.map((post) => (
-        <PostCard key={post.id} post={post} now={now} />
+        <PostCard key={post.id} post={post} now={now} username={username} />
       ))}
     </div>
   );
@@ -164,6 +180,8 @@ export default function Home() {
 
 function HomeContent() {
   const router = useRouter();
+  const { user } = useAuthUser();
+  const username = user?.username ?? null;
   const [activeBoard, setActiveBoardState] = useState<string | null>(null);
   const setActiveBoard = (boardId: string | null) => {
     setActiveBoardState(boardId);
@@ -234,14 +252,9 @@ function HomeContent() {
     : "/create";
 
   return (
-    <main className="flex flex-1 flex-col">
-      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
-        <div className="hidden lg:block">
-          <BoardNav activeBoard={activeBoard} onBoardChange={setActiveBoard} />
-        </div>
-
-        <section className="min-w-0">
-          <nav
+    <>
+      <ForumShell activeBoard={activeBoard} onBoardSelect={setActiveBoard}>
+        <nav
             aria-label="Boards"
             className="mb-3 flex gap-2 overflow-x-auto border-b border-line pb-3 lg:hidden"
           >
@@ -303,10 +316,10 @@ function HomeContent() {
             sort={activeSort}
             now={now}
             createPostHref={createPostHref}
+            username={username}
           />
 
-        </section>
-      </div>
+      </ForumShell>
 
       <Toaster
         position="top-right"
@@ -320,6 +333,6 @@ function HomeContent() {
           },
         }}
       />
-    </main>
+    </>
   );
 }
