@@ -236,6 +236,13 @@ Apply these to every task.
   and a central thread feed. There is no right sidebar. Non-functional
   controls are visibly disabled rather than pretending to work before their
   step is built.
+- Dark mode follows the operating-system preference on the first visit. The
+  top-bar toggle overrides it and stores the choice in `localStorage`. A small
+  inline script applies the theme before paint so a light page does not flash
+  before dark mode loads.
+- Colours are defined as semantic tokens in `globals.css` (`background`,
+  `surface`, `line`, `ink`, `body`, `muted`, `faint`), so light and dark themes
+  stay consistent as more pages are added.
 - Threads and posts have no upvote/downvote controls. Reactions belong to
   comments (replies) only.
 - The Next.js development indicator is disabled in `next.config.ts` so it

@@ -1,14 +1,43 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f6f7f8;
   --foreground: #1a1a1b;
+  --surface: #ffffff;
+  --surface-muted: #f6f7f8;
+  --line: #e5e7eb;
+  --ink: #1a1a1b;
+  --body: #374151;
+  --muted: #4b5563;
+  --faint: #6b7280;
   color-scheme: light;
+}
+
+.dark {
+  --background: #0b0b0c;
+  --foreground: #e5e7eb;
+  --surface: #151517;
+  --surface-muted: #1d1d20;
+  --line: #2a2a2e;
+  --ink: #f4f4f5;
+  --body: #d4d4d8;
+  --muted: #a1a1aa;
+  --faint: #8b8b93;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-body: var(--body);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
   --font-sinhala: var(--font-noto-sinhala);
   --font-tamil: var(--font-noto-tamil);
 }
@@ -24,4 +53,9 @@ body {
 ::selection {
   background: #ffedd5;
   color: #1a1a1b;
+}
+
+.dark ::selection {
+  background: #7c2d12;
+  color: #fff7ed;
 }

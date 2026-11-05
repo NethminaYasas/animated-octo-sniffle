@@ -21,6 +21,24 @@ export const metadata: Metadata = {
     "A classic discussion forum for Sri Lanka, in Sinhala, Tamil and English.",
 };
 
+// Apply a stored or system theme before the page paints, so dark mode does not
+// flash a light page on load. The toggle persists the choice in localStorage.
+const themeScript = `(function () {
+  try {
+    var saved = localStorage.getItem("theme");
+    var dark =
+      saved === "dark" ||
+      (saved !== "light" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("dark", dark);
+  } catch (error) {
+    document.documentElement.classList.toggle(
+      "dark",
+      window.matchMedia("(prefers-color-scheme: dark)").matches,
+    );
+  }
+})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
@@ -28,8 +46,10 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${notoSinhala.variable} ${notoTamil.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         {children}
       </body>
     </html>

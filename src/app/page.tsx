@@ -2,6 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import { checkSupabaseConnection } from "@/lib/supabase/status";
 
 type StatusTone = "neutral" | "success" | "warning" | "error";
@@ -11,19 +12,21 @@ const statusStyles: Record<
   { container: string; dot: string }
 > = {
   neutral: {
-    container: "border-gray-200 bg-white text-gray-600",
+    container: "border-line bg-surface text-muted",
     dot: "bg-gray-400",
   },
   success: {
-    container: "border-gray-200 bg-white text-gray-600",
+    container: "border-line bg-surface text-muted",
     dot: "bg-emerald-500",
   },
   warning: {
-    container: "border-amber-200 bg-amber-50 text-amber-900",
+    container:
+      "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200",
     dot: "bg-amber-500",
   },
   error: {
-    container: "border-red-200 bg-red-50 text-red-900",
+    container:
+      "border-red-200 bg-red-50 text-red-900 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200",
     dot: "bg-red-500",
   },
 };
@@ -80,11 +83,11 @@ async function SupabaseStatus() {
         detail={
           <>
             Add{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 text-[11px]">
+            <code className="rounded bg-amber-100 px-1 py-0.5 text-[11px] dark:bg-amber-900/50">
               NEXT_PUBLIC_SUPABASE_URL
             </code>{" "}
             and{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 text-[11px]">
+            <code className="rounded bg-amber-100 px-1 py-0.5 text-[11px] dark:bg-amber-900/50">
               NEXT_PUBLIC_SUPABASE_ANON_KEY
             </code>{" "}
             to <code className="text-[11px]">.env.local</code>, then restart the
@@ -228,44 +231,44 @@ function BoardNav() {
   return (
     <nav aria-label="Forum navigation" className="sticky top-20 space-y-0.5">
       <Link
-        className="flex items-center gap-2.5 rounded bg-[#e9ebed] px-3 py-2 text-sm font-medium text-[#1a1a1b]"
+        className="flex items-center gap-2.5 rounded bg-surface-muted px-3 py-2 text-sm font-medium text-ink"
         href="/"
       >
         <HomeIcon />
         Home
       </Link>
-      <div className="flex cursor-default items-center gap-2.5 rounded px-3 py-2 text-sm text-gray-500">
+      <div className="flex cursor-default items-center gap-2.5 rounded px-3 py-2 text-sm text-muted">
         <TrendingIcon />
         Popular
-        <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+        <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-faint">
           Soon
         </span>
       </div>
-      <div className="flex cursor-default items-center gap-2.5 rounded px-3 py-2 text-sm text-gray-500">
+      <div className="flex cursor-default items-center gap-2.5 rounded px-3 py-2 text-sm text-muted">
         <GridIcon />
         All
-        <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+        <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-faint">
           Soon
         </span>
       </div>
 
-      <div className="my-3 border-t border-gray-200" />
+      <div className="my-3 border-t border-line" />
 
-      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
         Boards
       </p>
       {boards.map((board) => (
         <div
           key={board.name}
-          className="flex cursor-default items-center gap-2.5 rounded px-3 py-2 text-sm text-gray-700"
+          className="flex cursor-default items-center gap-2.5 rounded px-3 py-2 text-sm text-body"
         >
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-600">
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-[10px] font-bold text-muted">
             {board.initial}
           </span>
           <span className="truncate">{board.name}</span>
         </div>
       ))}
-      <p className="px-3 pt-3 text-[11px] leading-5 text-gray-500">
+      <p className="px-3 pt-3 text-[11px] leading-5 text-muted">
         Boards open when the database is added.
       </p>
     </nav>
@@ -275,7 +278,7 @@ function BoardNav() {
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col">
-      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-3 sm:px-4">
           <Link
             aria-label="kaluwo home"
@@ -285,24 +288,25 @@ export default function Home() {
             <span className="grid size-8 place-items-center rounded-full bg-orange-700 text-sm font-bold text-white">
               k
             </span>
-            <span className="text-xl font-bold tracking-tight text-[#1a1a1b]">
+            <span className="text-xl font-bold tracking-tight text-ink">
               kaluwo
             </span>
           </Link>
 
           <div className="ml-auto hidden min-w-0 flex-1 justify-center px-4 md:flex">
-            <div className="flex h-9 w-full max-w-lg items-center gap-2 rounded-full border border-gray-200 bg-[#f6f7f8] px-3 text-sm text-gray-500">
+            <div className="flex h-9 w-full max-w-lg items-center gap-2 rounded-full border border-line bg-surface-muted px-3 text-sm text-muted">
               <SearchIcon />
               <span className="truncate">Search kaluwo</span>
-              <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+              <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wide text-faint">
                 Soon
               </span>
             </div>
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            <ThemeToggle />
             <button
-              className="hidden rounded-full border border-orange-700 px-3 py-1.5 text-xs font-semibold text-orange-700 disabled:cursor-not-allowed disabled:opacity-60 sm:block"
+              className="hidden rounded-full border border-orange-700 px-3 py-1.5 text-xs font-semibold text-orange-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-orange-500 dark:text-orange-400 sm:block"
               disabled
               title="Login arrives in the auth step"
               type="button"
@@ -327,17 +331,17 @@ export default function Home() {
         </div>
 
         <section className="min-w-0">
-          <div className="flex items-center justify-between gap-3 border-b border-gray-200 pb-3">
+          <div className="flex items-center justify-between gap-3 border-b border-line pb-3">
             <div>
-              <h1 className="text-lg font-semibold tracking-tight text-[#1a1a1b]">
+              <h1 className="text-lg font-semibold tracking-tight text-ink">
                 Home
               </h1>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted">
                 The front page of kaluwo
               </p>
             </div>
             <button
-              className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-500 disabled:cursor-not-allowed disabled:opacity-70"
+              className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted disabled:cursor-not-allowed disabled:opacity-70"
               disabled
               title="Posting arrives in a later step"
               type="button"
@@ -359,43 +363,43 @@ export default function Home() {
             <SupabaseStatus />
           </Suspense>
 
-          <div className="mt-3 flex items-center gap-1 border-b border-gray-200">
-            <span className="border-b-2 border-orange-700 px-3 py-2 text-xs font-semibold text-[#1a1a1b]">
+          <div className="mt-3 flex items-center gap-1 border-b border-line">
+            <span className="border-b-2 border-orange-700 px-3 py-2 text-xs font-semibold text-ink dark:border-orange-500">
               Best
             </span>
-            <span className="border-b-2 border-transparent px-3 py-2 text-xs font-semibold text-gray-400">
+            <span className="border-b-2 border-transparent px-3 py-2 text-xs font-semibold text-faint">
               Hot
             </span>
-            <span className="border-b-2 border-transparent px-3 py-2 text-xs font-semibold text-gray-400">
+            <span className="border-b-2 border-transparent px-3 py-2 text-xs font-semibold text-faint">
               New
             </span>
           </div>
 
-          <article className="mt-3 rounded border border-gray-200 bg-white p-3 sm:p-4">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-gray-500">
+          <article className="mt-3 rounded border border-line bg-surface p-3 sm:p-4">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted">
               <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-[10px] font-bold text-white">
                 k
               </span>
-              <span className="font-semibold text-[#1a1a1b]">
+              <span className="font-semibold text-ink">
                 Announcements
               </span>
               <span>•</span>
               <span>Posted by kaluwo</span>
               <span>•</span>
               <span>just now</span>
-              <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-800">
+              <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-800 dark:bg-orange-950/60 dark:text-orange-300">
                 Preview
               </span>
             </div>
-            <h2 className="mt-2 text-lg font-semibold leading-6 text-[#1a1a1b]">
+            <h2 className="mt-2 text-lg font-semibold leading-6 text-ink">
               Welcome to kaluwo
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-700">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-body">
               A Sri Lankan discussion forum for boards, threads and replies.
               This is a static preview of a post — real posting and comments
               come in later steps.
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-gray-500">
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-muted">
               <span className="flex items-center gap-1">
                 <CommentIcon />
                 0 comments
@@ -405,49 +409,49 @@ export default function Home() {
             </div>
           </article>
 
-          <div className="mt-3 rounded border border-dashed border-gray-300 bg-white px-4 py-10 text-center">
-            <p className="text-sm font-semibold text-[#1a1a1b]">
+          <div className="mt-3 rounded border border-dashed border-line bg-surface px-4 py-10 text-center">
+            <p className="text-sm font-semibold text-ink">
               No more posts yet
             </p>
-            <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-gray-500">
+            <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted">
               Once boards and posting are added, the newest threads will show
               up here.
             </p>
           </div>
 
-          <section className="mt-3 rounded border border-gray-200 bg-white p-3 sm:p-4">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          <section className="mt-3 rounded border border-line bg-surface p-3 sm:p-4">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
               Languages
             </h2>
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <div>
-                <p className="text-[11px] text-gray-500">Sinhala</p>
+                <p className="text-[11px] text-muted">Sinhala</p>
                 <p
-                  className="font-sinhala text-sm leading-7 text-[#1a1a1b]"
+                  className="font-sinhala text-sm leading-7 text-ink"
                   lang="si"
                 >
                   ආයුබෝවන්! මෙය සිංහල පෙළක්.
                 </p>
               </div>
               <div>
-                <p className="text-[11px] text-gray-500">Tamil</p>
+                <p className="text-[11px] text-muted">Tamil</p>
                 <p
-                  className="font-tamil text-sm leading-7 text-[#1a1a1b]"
+                  className="font-tamil text-sm leading-7 text-ink"
                   lang="ta"
                 >
                   வணக்கம்! இது ஒரு தமிழ் உரை.
                 </p>
               </div>
             </div>
-            <p className="mt-2 border-t border-gray-200 pt-2 text-[11px] leading-5 text-gray-500">
+            <p className="mt-2 border-t border-line pt-2 text-[11px] leading-5 text-muted">
               The interface starts in English and will be translated later.
             </p>
           </section>
         </section>
       </div>
 
-      <footer className="mt-4 border-t border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-[11px] text-gray-500">
+      <footer className="mt-4 border-t border-line bg-surface">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-[11px] text-muted">
           <p>kaluwo — a Sri Lankan discussion forum.</p>
           <p>Foundation preview · Built with Next.js and Supabase.</p>
         </div>

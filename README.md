@@ -75,6 +75,10 @@ should say **Connected**. If the values are missing you will see **Setup
 needed**; if they are wrong you will see a short error explaining what to
 check.
 
+Use the moon/sun button in the top bar to switch between light and dark mode.
+The first visit follows your operating-system preference, and the toggle
+remembers your choice in the browser.
+
 If you change `.env.local`, stop and restart the dev server.
 
 ## Available scripts
@@ -91,9 +95,11 @@ If you change `.env.local`, stop and restart the dev server.
 ```text
 src/
   app/
-    globals.css       Global Tailwind styles and font variables
-    layout.tsx        Root layout, metadata and Sinhala/Tamil fonts
+    globals.css       Tailwind styles and light/dark colour tokens
+    layout.tsx        Root layout, metadata, fonts and theme bootstrap
     page.tsx          Home page, forum shell and Supabase status banner
+  components/
+    theme-toggle.tsx  Light/dark mode button
   lib/
     supabase/
       client.ts       Supabase client for Client Components
