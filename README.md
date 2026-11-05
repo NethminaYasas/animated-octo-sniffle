@@ -129,8 +129,9 @@ If you change `.env.local`, stop and restart the dev server.
   sanitized result.
 - The toolbar supports bold, italic, strikethrough, inline code, links,
   quotes, lists and horizontal rules.
-- The **Text size** selector (Small, Medium, Large, X-Large) applies to the
-  selected text. With no selection, it applies to the text you type next.
+- The **Text size** selector (Small, Medium, Large) applies to the selected
+  text. With no selection, it applies to the text you type next. Choosing
+  another size updates the same text instead of nesting sizes.
 - Paste a supported link **on its own line** to embed it: YouTube, Vimeo,
   Reddit, Facebook, X/Twitter, Instagram, TikTok or Spotify. A link inside a
   sentence stays a normal link.

@@ -342,9 +342,11 @@ Apply these to every task.
   Write/Preview tabs, one pane at a time, on every screen. Write shows
   formatted text, not HTML source. Preview uses the same `MarkdownContent`
   renderer as posts and comments.
-- The toolbar's Text size selector (Small / Medium / Large / X-Large) wraps the
-  selected text in a `span[data-size]`. With no selection it inserts an empty
-  span and places the caret inside, so the next typed text uses that size. The
+- The toolbar's Text size selector (Small / Medium / Large) wraps the selected
+  text in a `span[data-size]`. With no selection it inserts an empty span and
+  places the caret inside, so the next typed text uses that size. Changing the
+  size again updates the same span instead of nesting another one. Sizes use
+  root-relative `rem` units, so even legacy nested spans cannot compound. The
   span is styled in the editor and sanitized on render; the raw markup is never
   shown to the author.
 - The editor stores HTML in `posts.content` and comment bodies. The renderer

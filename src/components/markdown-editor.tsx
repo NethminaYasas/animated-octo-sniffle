@@ -32,7 +32,6 @@ const INLINE_SIZES = {
   sm: "Small",
   md: "Medium",
   lg: "Large",
-  xl: "X-Large",
 } as const;
 
 type InlineSize = keyof typeof INLINE_SIZES;
@@ -213,6 +212,20 @@ export function MarkdownEditor({
     syncValue();
   };
 
+  const findSizeSpan = (node: Node | null) => {
+    let current: Node | null = node;
+
+    while (current && current !== editorRef.current) {
+      if (current instanceof HTMLElement && current.matches("span[data-size]")) {
+        return current;
+      }
+
+      current = current.parentNode;
+    }
+
+    return null;
+  };
+
   const applyInlineSize = (size: InlineSize) => {
     const range = getActiveRange();
 
@@ -222,6 +235,29 @@ export function MarkdownEditor({
 
     focusEditor();
     restoreRange(range);
+
+    const existing = findSizeSpan(
+      range.collapsed ? range.startContainer : range.commonAncestorContainer,
+    );
+
+    // Change the existing span instead of nesting another size on top of it.
+    if (range.collapsed && existing) {
+      existing.setAttribute("data-size", size);
+      syncValue();
+      return;
+    }
+
+    if (
+      !range.collapsed &&
+      existing &&
+      existing.contains(range.startContainer) &&
+      existing.contains(range.endContainer) &&
+      existing.textContent === range.toString()
+    ) {
+      existing.setAttribute("data-size", size);
+      syncValue();
+      return;
+    }
 
     const span = document.createElement("span");
     span.setAttribute("data-size", size);
@@ -236,6 +272,13 @@ export function MarkdownEditor({
       restoreRange(next);
     } else {
       span.appendChild(range.extractContents());
+
+      // The new size applies to the whole selection, including any spans the
+      // author selected.
+      span.querySelectorAll("span[data-size]").forEach((inner) => {
+        inner.removeAttribute("data-size");
+      });
+
       range.insertNode(span);
 
       const next = document.createRange();

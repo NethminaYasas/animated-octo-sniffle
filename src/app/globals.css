@@ -115,7 +115,7 @@ body {
   background: var(--surface-muted);
   border-radius: 0.25rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85em;
+  font-size: 0.85rem;
   padding: 0.15em 0.4em;
 }
 
@@ -129,19 +129,19 @@ body {
 }
 
 .rich-editor [data-size="sm"] {
-  font-size: 0.85em;
+  font-size: 0.85rem;
 }
 
 .rich-editor [data-size="md"] {
-  font-size: 1em;
+  font-size: 1rem;
 }
 
 .rich-editor [data-size="lg"] {
-  font-size: 1.15em;
+  font-size: 1.15rem;
 }
 
 .rich-editor [data-size="xl"] {
-  font-size: 1.3em;
+  font-size: 1.3rem;
 }
 
 /* ---------------------------------------------------------------------------
@@ -203,19 +203,19 @@ body {
 /* Inline text sizes written by the editor as
    <span data-size="...">...</span>. The sanitizer only allows these values. */
 .text-size-sm {
-  font-size: 0.85em;
+  font-size: 0.85rem;
 }
 
 .text-size-md {
-  font-size: 1em;
+  font-size: 1rem;
 }
 
 .text-size-lg {
-  font-size: 1.15em;
+  font-size: 1.15rem;
 }
 
 .text-size-xl {
-  font-size: 1.3em;
+  font-size: 1.3rem;
 }
 
 .markdown-body em {
