@@ -18,6 +18,7 @@ export function PostActions({
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate saved state after mount
     setSaved(loadSavedIds().includes(postId));
   }, [postId]);
 

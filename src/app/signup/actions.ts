@@ -1,5 +1,6 @@
 "use server";
 
+import { recordSecurityEvent } from "@/lib/audit/security-events";
 import { authErrorMessage } from "@/lib/auth/errors";
 import { createInternalEmail } from "@/lib/auth/internal-email";
 import { verifyTurnstile } from "@/lib/auth/turnstile";
@@ -134,6 +135,11 @@ export async function signUpWithInvite(input: {
       console.error("consume_invite_code failed:", consumeError.message);
     }
 
+    await recordSecurityEvent({
+      event: "signup.failed",
+      metadata: { reason: "invite_rejected", username },
+    });
+
     return {
       ok: false,
       error: "That invite code is not valid or was already used.",
@@ -198,6 +204,12 @@ export async function signUpWithInvite(input: {
   if (attributeError) {
     console.error("could not attribute invite code:", attributeError.message);
   }
+
+  await recordSecurityEvent({
+    event: "signup.succeeded",
+    userId,
+    metadata: { username },
+  });
 
   // Create the cookie session so the member lands on their profile straight
   // away. If sign-in fails the account still works; the form offers a login

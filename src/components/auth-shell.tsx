@@ -1,8 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { SiteHeader } from "@/components/site-header";
-
 export function AuthShell({
   title,
   subtitle,
@@ -16,8 +14,6 @@ export function AuthShell({
 }) {
   return (
     <main className="flex flex-1 flex-col">
-      <SiteHeader />
-
       <div className="mx-auto w-full max-w-md flex-1 px-3 py-8 sm:px-4 sm:py-12">
         <div className="rounded-xl border border-line bg-surface p-5 shadow-sm sm:p-6">
           <div className="mb-5">

@@ -8,7 +8,8 @@ keys or personal data may be committed.
 schema, RLS policies and authentication are built in the repository. The
 migrations in `supabase/migrations/` still have to be applied to the Supabase
 project. Posting to the database, moderation, uploads and the live forum are
-still to be built.
+still to be built. The local prototype already covers posting, comments,
+reactions, quotes, mentions and notifications in the browser.
 
 ## 1. What kaluwo is
 
@@ -41,7 +42,8 @@ UTF-8 everywhere, suitable fonts, and an i18n-ready UI starting in English.
 - `moderator`
 - `admin`
 
-Banned users cannot post or upload.
+Banned users cannot post, comment, upload or report, but they can still
+react.
 
 New accounts have restrictions: for example, no links or media until they have
 a few approved posts or a minimum account age. The thresholds must be
@@ -57,7 +59,7 @@ configurable.
    pagination (20 to 50 posts per page)
 4. **Posting** — create thread and reply, quote, soft-delete
 5. **Reactions** — like, laugh and wow (positive); anger and dislike
-   (negative), on comments only
+   (negative), on posts and comments, excluding your own content
 6. **Editing** — edit and delete own posts, keeping edit history
 7. **Moderation roles** — moderators can lock, pin, move and delete threads;
    delete posts; and ban users
@@ -113,28 +115,30 @@ The SQL lives in `supabase/migrations/`. Tables:
 - `content`
 - `reply_to_post_id` — the post being replied to; its author is the member
   being replied to
-- `is_opening` — true for the thread's first post; reactions are not allowed
-  on it
+- `is_opening` — true for the thread's first post; reactions are allowed on
+  it but do not count toward the author's reaction score
 - `created_at`
 - `edited_at`
 - `is_deleted`
 
-A comment is a reply post. Reactions attach only to comments; threads and
-opening posts have no score.
+A comment is a reply post. Reactions attach to posts and comments, but not to
+your own content. Threads themselves have no score, and the reaction score
+counts comments only, so reactions on opening posts do not change it.
 
 ### `reactions`
 
 - `id`
-- `post_id` — the comment being reacted to
+- `post_id` — the post or comment being reacted to
 - `user_id`
 - `kind` — `like` / `laugh` / `wow` / `anger` / `dislike`
 - `created_at`
 
 `like`, `laugh` and `wow` count as positive; `anger` and `dislike` count as
-negative. Reaction totals roll up to the comment author's
+negative. Reaction totals on comments roll up to the comment author's
 `profiles.reaction_score`; opening posts and soft-deleted comments are
-excluded. A user has exactly one reaction per comment; choosing a different
-reaction updates the existing row (`unique (post_id, user_id)`).
+excluded from the score. A user has exactly one reaction per post or comment;
+choosing a different reaction updates the existing row
+(`unique (post_id, user_id)`).
 
 ### `reports`
 
@@ -166,6 +170,28 @@ reaction updates the existing row (`unique (post_id, user_id)`).
 - `used_by` — account that redeemed it
 - `used_at`
 - `created_at`
+
+### `security_events`
+
+- `id`
+- `event` — `login.succeeded`, `login.failed`, `signup.succeeded`,
+  `signup.failed`, `password_reset.requested`, `oauth.succeeded`,
+  `oauth.failed`
+- `user_id` — the account involved, when known
+- `ip` — client address from Cloudflare/proxy headers, or `NULL`
+- `user_agent`
+- `metadata` — small JSONB context such as the attempted username or a reason
+- `created_at`
+
+This table is service-role only: RLS is enabled with no policies and the
+`anon`/`authenticated` grants are revoked. It records authentication and
+moderation events, never passwords, session tokens or CAPTCHA values. IPs are
+personal data, so a retention window (starting at 90 days) is applied with a
+scheduled delete and disclosed in the privacy notice.
+
+**Hardware (MAC) addresses are not collected.** They are Layer-2 addresses
+that do not cross a router, and browsers do not expose them. Abuse
+investigation uses the IP, user agent and account instead.
 
 ## 6. Media system (catbox.moe)
 
@@ -261,8 +287,8 @@ Apply these to every task.
 - Colours are defined as semantic tokens in `globals.css` (`background`,
   `surface`, `line`, `ink`, `body`, `muted`, `faint`), so light and dark themes
   stay consistent as more pages are added.
-- Threads and posts have no upvote/downvote controls. Reactions belong to
-  comments (replies) only.
+- Threads themselves have no upvote/downvote controls. Reactions belong to
+  posts and comments, but not to your own content.
 - The Next.js development indicator is disabled in `next.config.ts` so it
   does not cover the bottom-left of the page during development.
 
@@ -278,8 +304,8 @@ Apply these to every task.
   posts are hidden from normal readers; the thread author and moderators still
   see them.
 - `posts.is_opening` marks the thread's first post. A partial unique index
-  allows exactly one opening post per thread, and reactions are rejected on
-  opening posts by RLS.
+  allows exactly one opening post per thread. Reactions are allowed on opening
+  posts but are excluded from the comment-only reaction score.
 - Members can edit their own post content and soft-delete their own posts.
   They cannot hard-delete, move a post, change its author, or change the
   opening-post flag. Moderators can hard-delete.

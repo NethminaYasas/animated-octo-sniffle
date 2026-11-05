@@ -1,5 +1,6 @@
 "use server";
 
+import { recordSecurityEvent } from "@/lib/audit/security-events";
 import { authErrorMessage } from "@/lib/auth/errors";
 import { verifyTurnstile } from "@/lib/auth/turnstile";
 import { normaliseUsername, usernameProblem } from "@/lib/auth/validation";
@@ -73,14 +74,26 @@ export async function loginWithUsername(input: {
     resolvedEmail ?? `missing-${crypto.randomUUID()}@example.com`;
 
   const supabase = await createClient();
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  const { data: signIn, error: signInError } =
+    await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
   if (signInError) {
+    await recordSecurityEvent({
+      event: "login.failed",
+      metadata: { username },
+    });
+
     return { ok: false, error: authErrorMessage(signInError) };
   }
+
+  await recordSecurityEvent({
+    event: "login.succeeded",
+    userId: signIn.user?.id ?? null,
+    metadata: { username },
+  });
 
   return { ok: true };
 }

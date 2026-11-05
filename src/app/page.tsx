@@ -6,13 +6,18 @@ import { useState, useEffect } from "react";
 import { Plus, MessageSquare } from "lucide-react";
 import { Toaster } from "sonner";
 
-import { SiteHeader } from "@/components/site-header";
 import { BoardNav } from "@/components/board-nav";
 import { MarkdownContent } from "@/components/markdown-content";
 import { PostActions } from "@/components/post-actions";
 import { BOARDS } from "@/lib/boards";
 import { SEED_POSTS } from "@/lib/seed-posts";
-import { loadPosts, loadComments, type SavedPost } from "@/lib/feed-store";
+import {
+  FEED_CHANGED_EVENT,
+  loadComments,
+  loadDeletedPostIds,
+  loadPosts,
+  type SavedPost,
+} from "@/lib/feed-store";
 import { formatRelativeTime } from "@/lib/time";
 
 type SortOption = "new" | "hot" | "best";
@@ -46,11 +51,18 @@ function SortTabs({ activeSort, onSortChange }: { activeSort: SortOption; onSort
 }
 
 function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
+  const board = BOARDS.find((candidate) => candidate.id === post.boardId);
+  const BoardIcon = board?.icon;
+
   return (
     <article className="mt-3 rounded border border-line bg-surface p-3 sm:p-4 hover:border-orange-700/30 dark:hover:border-orange-500/30 transition-colors">
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
-        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-[0.65rem] font-bold text-white">
-          {post.boardInitial}
+        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-white">
+          {BoardIcon ? (
+            <BoardIcon className="size-3" aria-hidden="true" />
+          ) : (
+            <span className="text-[0.65rem] font-bold">{post.boardInitial}</span>
+          )}
         </span>
         <span className="font-semibold text-ink">{post.boardName}</span>
         <span>•</span>
@@ -95,7 +107,7 @@ function PostList({
   now: Date | null;
   createPostHref: string;
 }) {
-  let sortedPosts = [...posts];
+  const sortedPosts = [...posts];
 
   const nowTime = now?.getTime() ?? 1704067200000; // 2024-01-01T00:00:00Z
 
@@ -171,30 +183,43 @@ function HomeContent() {
 
   const [activeSort, setActiveSort] = useState<SortOption>("new");
   const [createdPosts, setCreatedPosts] = useState<SavedPost[]>([]);
+  const [deletedPostIds, setDeletedPostIds] = useState<number[]>([]);
   const [commentCounts, setCommentCounts] = useState<Record<number, number>>({});
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
     const currentDate = new Date();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start the relative-time clock on the client
     setNow(currentDate);
     const interval = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    const saved = loadPosts();
-    setCreatedPosts(saved);
-    const counts: Record<number, number> = {};
-    for (const post of [...SEED_POSTS, ...saved]) {
-      counts[post.id] = loadComments(post.id).length;
-    }
-    setCommentCounts(counts);
+    const syncFeed = () => {
+      const saved = loadPosts();
+      setCreatedPosts(saved);
+      setDeletedPostIds(loadDeletedPostIds());
+
+      const counts: Record<number, number> = {};
+      for (const post of [...SEED_POSTS, ...saved]) {
+        counts[post.id] = loadComments(post.id).length;
+      }
+      setCommentCounts(counts);
+    };
+
+    syncFeed();
+    window.addEventListener(FEED_CHANGED_EVENT, syncFeed);
+
+    return () => window.removeEventListener(FEED_CHANGED_EVENT, syncFeed);
   }, []);
 
-  const feed = [...SEED_POSTS, ...createdPosts].map((post) => ({
-    ...post,
-    commentCount: commentCounts[post.id] ?? post.commentCount,
-  }));
+  const feed = [...SEED_POSTS, ...createdPosts]
+    .filter((post) => !deletedPostIds.includes(post.id))
+    .map((post) => ({
+      ...post,
+      commentCount: commentCounts[post.id] ?? post.commentCount,
+    }));
 
   const filteredPosts = activeBoard
     ? feed.filter((p) => p.boardId === activeBoard)
@@ -206,8 +231,6 @@ function HomeContent() {
 
   return (
     <main className="flex flex-1 flex-col">
-      <SiteHeader />
-
       <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <BoardNav activeBoard={activeBoard} onBoardChange={setActiveBoard} />
@@ -228,19 +251,24 @@ function HomeContent() {
             >
               Home
             </button>
-            {BOARDS.map((board) => (
-              <button
-                key={board.id}
-                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  activeBoard === board.id
-                    ? "bg-orange-700 text-white"
-                    : "bg-surface-muted text-muted hover:text-ink"
-                }`}
-                onClick={() => setActiveBoard(board.id)}
-              >
-                {board.name}
-              </button>
-            ))}
+            {BOARDS.map((board) => {
+              const Icon = board.icon;
+
+              return (
+                <button
+                  key={board.id}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    activeBoard === board.id
+                      ? "bg-orange-700 text-white"
+                      : "bg-surface-muted text-muted hover:text-ink"
+                  }`}
+                  onClick={() => setActiveBoard(board.id)}
+                >
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  {board.name}
+                </button>
+              );
+            })}
           </nav>
           <div className="flex items-center justify-between gap-3 border-b border-line pb-3">
             <div>

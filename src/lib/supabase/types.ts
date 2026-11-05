@@ -302,6 +302,37 @@ export type Database = {
           },
         ];
       };
+      security_events: {
+        Row: {
+          created_at: string;
+          event: string;
+          id: number;
+          ip: string | null;
+          metadata: Json;
+          user_agent: string | null;
+          user_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          event: string;
+          id?: never;
+          ip?: string | null;
+          metadata?: Json;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          event?: string;
+          id?: never;
+          ip?: string | null;
+          metadata?: Json;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       threads: {
         Row: {
           author_id: string | null;

@@ -1,11 +1,17 @@
 "use client";
 
-import { LogIn, Search, UserPlus, UserRound } from "lucide-react";
+import { Bell, LogIn, Search, UserPlus, UserRound } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { LogoutButton } from "@/components/logout-button";
+import { NotificationPanel } from "@/components/notification-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  markAllNotificationsRead,
+  markNotificationRead,
+  useNotifications,
+} from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
 
 type SessionUser = {
@@ -22,6 +28,23 @@ type HeaderUser = {
 export function SiteHeader() {
   const [user, setUser] = useState<HeaderUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notifications = useNotifications(user?.name ?? null);
+  const unread = notifications.reduce(
+    (count, notification) => count + (notification.read ? 0 : 1),
+    0,
+  );
+  const closeNotifications = useCallback(() => {
+    setNotificationsOpen(false);
+  }, []);
+  const handleMarkAllRead = () => {
+    if (user?.name) {
+      markAllNotificationsRead(user.name);
+    }
+  };
+  const handleOpenNotification = (id: string) => {
+    markNotificationRead(id);
+  };
 
   useEffect(() => {
     let active = true;
@@ -37,6 +60,7 @@ export function SiteHeader() {
 
         if (!authUser) {
           setUser(null);
+          setNotificationsOpen(false);
           setLoading(false);
           return;
         }
@@ -64,7 +88,12 @@ export function SiteHeader() {
           });
       };
 
-      supabase.auth.getUser().then(({ data }) => applyUser(data.user));
+      // getSession reads the cookie the proxy refreshed for this request.
+      // getUser() would make a network call on every mount and can briefly
+      // report a logged-out user while a token refresh is in flight.
+      supabase.auth
+        .getSession()
+        .then(({ data }) => applyUser(data.session?.user ?? null));
 
       const { data: subscription } = supabase.auth.onAuthStateChange(
         (_event, session) => {
@@ -74,6 +103,7 @@ export function SiteHeader() {
 
       unsubscribe = () => subscription.subscription.unsubscribe();
     } catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- auth is unavailable, so stop the skeleton
       setLoading(false);
     }
 
@@ -84,7 +114,7 @@ export function SiteHeader() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-3 sm:px-4">
         <Link
           aria-label="kaluwo home"
@@ -119,6 +149,41 @@ export function SiteHeader() {
             />
           ) : user ? (
             <>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen((open) => !open)}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-expanded={notificationsOpen}
+                  aria-controls="notification-panel"
+                  aria-label={
+                    unread > 0
+                      ? `Notifications, ${unread} unread`
+                      : "Notifications"
+                  }
+                  title="Notifications"
+                  className="relative grid size-8 place-items-center rounded-full border border-line text-muted transition-colors hover:bg-surface-muted hover:text-ink"
+                >
+                  <Bell className="size-4" />
+                  {unread > 0 ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-orange-700 px-1 text-[9px] font-bold leading-none text-white"
+                    >
+                      {unread > 9 ? "9+" : unread}
+                    </span>
+                  ) : null}
+                </button>
+
+                {notificationsOpen ? (
+                  <NotificationPanel
+                    notifications={notifications}
+                    onClose={closeNotifications}
+                    onMarkAllRead={handleMarkAllRead}
+                    onOpen={handleOpenNotification}
+                  />
+                ) : null}
+              </div>
               <Link
                 className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-surface-muted"
                 href="/profile"

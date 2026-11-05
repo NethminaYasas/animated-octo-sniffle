@@ -241,6 +241,19 @@ body {
   text-decoration: underline;
 }
 
+.markdown-body .mention {
+  background: #fff7ed;
+  border-radius: 0.25rem;
+  color: #c2410c;
+  font-weight: 600;
+  padding: 0 0.15em;
+}
+
+.dark .markdown-body .mention {
+  background: rgba(124, 45, 18, 0.35);
+  color: #fdba74;
+}
+
 .dark .markdown-body a {
   color: #fdba74;
 }

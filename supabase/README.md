@@ -18,6 +18,10 @@ Run every file in `migrations/` in filename order:
    `consume_invite_code()` claim function.
 6. `20261105050000_unicode_usernames.sql` — Sinhala/Tamil usernames, NFC
    normalisation, and the Unicode-safe profile trigger.
+7. `20261105060000_security_events.sql` — service-role-only `security_events`
+   audit log for auth events.
+8. `20261105070000_post_reactions.sql` — members can react to posts as well as
+   comments, but not to their own content.
 
 ### Dashboard method (recommended)
 
@@ -27,7 +31,7 @@ Run every file in `migrations/` in filename order:
    order.
 4. Open **Table Editor** and confirm these tables exist:
    `profiles`, `boards`, `threads`, `posts`, `reactions`, `reports`,
-   `media_assets`.
+   `media_assets`, `security_events`.
 5. Open `boards`. It should contain 7 rows (Announcements, General, ...).
 6. Open `profiles`. It should have `reaction_score` and
    `onboarding_completed` columns.
@@ -192,10 +196,11 @@ redirecting. Keep the Site URL set to your real origin.
 | `boards` | Forum boards; `id` is the slug used in URLs (`general`, `food`) |
 | `threads` | Threads, lock/pin flags, soft-delete flag, last activity time |
 | `posts` | Opening posts and replies; `is_opening` marks the first post |
-| `reactions` | One changeable reaction per user per comment |
+| `reactions` | One changeable reaction per member per post or comment |
 | `reports` | Report queue with `open` / `resolved` / `dismissed` |
 | `media_assets` | catbox upload metadata and removal status |
 | `invite_codes` | Single-use keys for username + password sign-up; no browser access |
+| `security_events` | Auth and moderation audit trail with IP; service-role only |
 
 ### Account flows
 
@@ -237,14 +242,37 @@ redirecting. Keep the Site URL set to your real origin.
   thread, and rejects self-replies.
 - `posts_reply_to_idx` makes reply lookups cheap.
 
+### Security audit log
+
+`security_events` records authentication events (`login.succeeded`,
+`login.failed`, `signup.succeeded`, `signup.failed`,
+`password_reset.requested`, `oauth.succeeded`, `oauth.failed`) with the
+account, IP, user agent and a small JSONB metadata object. The app calls
+`recordSecurityEvent()` from `src/lib/audit/security-events.ts`.
+
+- **No browser access.** RLS is enabled with no policies, and the default
+  `anon` / `authenticated` grants are revoked. The service role is the only
+  reader. Do not add a policy for this table.
+- **IPs are personal data.** The address comes from `cf-connecting-ip`, then
+  `x-real-ip`, then `x-forwarded-for`. It is `NULL` when no trustworthy header
+  exists, and it is never used for authorisation. Only trust these headers when
+  the app is actually behind Cloudflare or your own proxy.
+- **Retention.** The migration includes a commented `pg_cron` job that deletes
+  rows older than 90 days. Choose the shortest window that still supports abuse
+  investigation, run the job, and describe the same window in the privacy
+  notice.
+- **Never store secrets.** Metadata holds a username or a reason string, never
+  passwords, session tokens or CAPTCHA values.
+
 ## What the RLS policies allow
 
 - **Public reads:** profiles, boards, non-deleted threads, non-deleted posts,
   reactions, and active media. Anonymous visitors can browse the forum.
 - **Authenticated writes:** a member can start a thread, add a post or reply,
   react to a comment, report a post, or add media. The row must belong to them.
-- **Banned members:** can still read, but every write policy checks
-  `is_banned()` and rejects them.
+- **Banned members:** can still read and react. Posting, commenting,
+  uploading, reporting and other writes still check `is_banned()` and reject
+  them; the reaction policies intentionally do not.
 - **Threads:** only moderators can lock, pin, move, soft-delete or hard-delete
   a thread. Authors do not edit thread titles.
 - **Posts:** authors can edit their own content, set `reply_to_post_id`, and
@@ -260,6 +288,12 @@ redirecting. Keep the Site URL set to your real origin.
 - **Profiles:** users can edit their own username and avatar. Only admins can
   change roles. Moderators can ban members, but cannot ban an admin. The
   service role and SQL editor bypass these checks.
+- **Reactions:** members, including banned members, can react to active posts
+  and comments in active threads, but not to their own content.
+  `reaction_score` still counts reactions on comments only, so reacting to an
+  opening post does not change a member's score.
+- **Audit log:** `security_events` has RLS enabled and no policies. Only the
+  service role and the SQL editor can read or write it.
 
 ## Troubleshooting
 

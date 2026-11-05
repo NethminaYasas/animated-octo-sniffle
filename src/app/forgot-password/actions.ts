@@ -1,5 +1,6 @@
 "use server";
 
+import { recordSecurityEvent } from "@/lib/audit/security-events";
 import { authErrorMessage } from "@/lib/auth/errors";
 import { getRequestOrigin } from "@/lib/auth/origin";
 import { verifyTurnstile } from "@/lib/auth/turnstile";
@@ -42,6 +43,10 @@ export async function requestPasswordReset(input: {
   if (error) {
     return { ok: false, error: authErrorMessage(error) };
   }
+
+  // Deliberately does not store the submitted address: the form must not
+  // reveal whether an account exists, and the audit row adds no value for it.
+  await recordSecurityEvent({ event: "password_reset.requested" });
 
   return { ok: true };
 }

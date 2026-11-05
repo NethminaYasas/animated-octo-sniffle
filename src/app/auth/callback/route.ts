@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { recordSecurityEvent } from "@/lib/audit/security-events";
 import { safeRedirectPath } from "@/lib/auth/redirect";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,6 +22,11 @@ export async function GET(request: NextRequest) {
       // A new Google account has a profile but no username/password yet.
       const user = data.user;
 
+      await recordSecurityEvent({
+        event: "oauth.succeeded",
+        userId: user?.id ?? null,
+      });
+
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
@@ -36,6 +42,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(next, origin));
     }
   }
+
+  await recordSecurityEvent({ event: "oauth.failed" });
 
   return NextResponse.redirect(new URL("/auth/auth-code-error", origin));
 }

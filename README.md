@@ -74,7 +74,8 @@ are for later steps. Leave them alone for now.
 Follow [supabase/README.md](./supabase/README.md). Run every file in
 `supabase/migrations/` in filename order in the Supabase SQL Editor. They
 create the tables, RLS policies, the username-login helper, reaction scores,
-the reply rules, Google onboarding and invite codes.
+the reply rules, Google onboarding and invite codes, the security audit log,
+and post reactions.
 
 The generated TypeScript types are already committed at
 `src/lib/supabase/types.ts`. Regenerate them only after a schema change.
@@ -151,6 +152,30 @@ If you change `.env.local`, stop and restart the dev server.
 The site baseline is 19px so the forum is comfortable to read on a desktop;
 the editor's Text size control applies to the text you select or type next.
 
+### Comments, quotes and reactions
+
+- Comments are listed **above** the comment composer, so the discussion stays
+  in view while you write.
+- Members can react to other members' posts and comments with like, laugh,
+  wow, anger or dislike. The primary **Like** button likes on a click or tap;
+  hover it (desktop) or press and hold (touch) to pick another emoji. Your own
+  content does not show reaction buttons. Banned members can still react, but
+  cannot post or comment.
+- Admins and moderators see **Delete** on posts and comments.
+- **Reply** copies the comment and its author to the quote clipboard and marks
+  the reply target. The composer shows who you are replying to.
+- Select text inside a comment to get a floating **Quote** button. Copied
+  quotes collect behind the clipboard button in the editor, where each one can
+  be removed or pasted into the comment.
+- Type `@username` to mention a member. Mentions are highlighted in rendered
+  posts and comments.
+- The bell in the header opens a panel listing replies, quotes and mentions.
+
+**Local prototype limitation:** posts and comments are still saved in this
+browser, so notifications are local too. They appear for another member when
+that member uses the same browser. Cross-device delivery comes with the
+database-backed posting step.
+
 ## Available scripts
 
 | Command | What it does |
@@ -174,11 +199,17 @@ src/
     reset-password/   New-password page after the email link
     signup/           Invite-only registration page and server action
     globals.css       Tailwind styles and light/dark colour tokens
-    layout.tsx        Root layout, metadata, fonts and theme bootstrap
+    layout.tsx        Root layout, shared header, metadata, fonts, theme bootstrap
     page.tsx          Home page and forum shell
-  components/         Header, auth shell, Turnstile, rich text editor, embeds
+  components/         Header, notification panel, rich text editor, embeds
   lib/
+    audit/            Service-role security event log
     auth/             Auth errors, redirects, Turnstile, validation
+    boards.ts         Board names, descriptions and icons
+    mentions.ts       @mention and quote parsing plus HTML helpers
+    notifications.ts  Local reply/quote/mention notifications
+    quotes.ts         Quote clipboard store
+    reactions.ts      Local post/comment reactions
     supabase/
       admin.ts        Service-role client (server only)
       client.ts       Supabase client for Client Components
@@ -213,6 +244,27 @@ supabase/
   `/auth/confirm` `token_hash` link (see
   [supabase/README.md](./supabase/README.md)).
 - **Supabase project paused** — resume it in the dashboard.
+
+## Security audit log
+
+Login, sign-up, password-reset and OAuth events are written to the
+`security_events` table by `src/lib/audit/security-events.ts`. Each row has the
+event, the account, the client IP, the user agent, and a small metadata object.
+
+- The table is **service-role only**. RLS is enabled with no policies, so the
+  browser and the anon key cannot read it. Do not add a policy.
+- The IP comes from `cf-connecting-ip`, then `x-real-ip`, then
+  `x-forwarded-for`, and is `NULL` when none is trustworthy. Only trust these
+  headers when the app is actually behind Cloudflare or your own proxy; a
+  directly exposed server lets clients forge them.
+- Audit failures never break authentication; they are logged to the server
+  console instead.
+- IPs are personal data. Apply the retention job from
+  [supabase/README.md](./supabase/README.md#security-audit-log), disclose the
+  window in the privacy notice, and never export rows into the repository.
+- MAC (hardware) addresses are **not** collected. They are Layer-2 addresses
+  that never cross a router, and browsers have no API that exposes them. Use
+  the IP, user agent and account for abuse investigation instead.
 
 ## Secrets warning
 

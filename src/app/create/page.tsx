@@ -6,13 +6,15 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, Check, Send } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
-import { SiteHeader } from "@/components/site-header";
 import { BoardNav } from "@/components/board-nav";
 import { BackHomeButton } from "@/components/back-home-button";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { LoginGate } from "@/components/login-gate";
+import { normaliseUsername } from "@/lib/auth/validation";
 import { BOARDS } from "@/lib/boards";
 import { savePost, type SavedPost } from "@/lib/feed-store";
+import { excerptFromHtml, extractMentions } from "@/lib/mentions";
+import { addNotification } from "@/lib/notifications";
 import { useAuthUser } from "@/lib/use-auth-user";
 
 function validBoardId(candidate: string | null): string {
@@ -32,6 +34,7 @@ function BoardPicker({
   const listRef = useRef<HTMLUListElement>(null);
 
   const selected = BOARDS.find((board) => board.id === value) ?? BOARDS[0];
+  const SelectedIcon = selected.icon;
 
   useEffect(() => {
     if (!open) return;
@@ -85,8 +88,8 @@ function BoardPicker({
         onClick={() => setOpen((current) => !current)}
         className="flex w-full items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-orange-600"
       >
-        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-orange-700 text-[10px] font-bold text-white">
-          {selected.initial}
+        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-orange-700 text-white">
+          <SelectedIcon className="size-3.5" aria-hidden="true" />
         </span>
         <span className="min-w-0 flex-1">
           <span id="board-picker-value" className="block truncate text-sm font-semibold text-ink">
@@ -110,6 +113,7 @@ function BoardPicker({
         >
           {BOARDS.map((board) => {
             const isSelected = board.id === value;
+            const Icon = board.icon;
             return (
               <li key={board.id} role="option" aria-selected={isSelected}>
                 <button
@@ -125,8 +129,8 @@ function BoardPicker({
                     isSelected ? "bg-orange-50 dark:bg-orange-950/30" : "hover:bg-surface-muted"
                   }`}
                 >
-                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-[10px] font-bold text-muted">
-                    {board.initial}
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-muted">
+                    <Icon className="size-3.5" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-ink">
@@ -159,6 +163,7 @@ function CreatePostForm({ authorName }: { authorName: string }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read the board query param after mount
     setBoardId(validBoardId(params.get("board")));
     titleRef.current?.focus();
   }, []);
@@ -192,6 +197,25 @@ function CreatePostForm({ authorName }: { authorName: string }) {
         description: "Browser storage is unavailable or full.",
       });
       return;
+    }
+
+    const author = normaliseUsername(authorName);
+    const excerpt = excerptFromHtml(post.content);
+
+    for (const mentioned of extractMentions(post.content)) {
+      if (mentioned === author) {
+        continue;
+      }
+
+      addNotification({
+        recipient: mentioned,
+        actor: author,
+        kind: "mention",
+        threadId: post.id,
+        threadTitle: post.title,
+        commentId: null,
+        excerpt,
+      });
     }
 
     toast.success("Posted!");
@@ -277,8 +301,6 @@ export default function CreatePostPage() {
 
   return (
     <main className="flex flex-1 flex-col">
-      <SiteHeader />
-
       <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <BoardNav activeBoard={undefined} onBoardChange={handleBoardNavSelect} />
@@ -299,7 +321,19 @@ export default function CreatePostPage() {
           {loading ? (
             <p className="mt-6 text-sm text-muted">Checking your account...</p>
           ) : user ? (
-            <CreatePostForm authorName={user.username ?? "you"} />
+            user.isBanned ? (
+              <div className="mt-6 rounded-lg border border-line bg-surface p-5 text-center">
+                <p className="text-sm font-semibold text-ink">
+                  Your account is banned
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  You can still read and react, but you cannot start a thread
+                  or comment.
+                </p>
+              </div>
+            ) : (
+              <CreatePostForm authorName={user.username ?? "you"} />
+            )
           ) : (
             <LoginGate
               next="/create"

@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 
+export type UserRole = "member" | "moderator" | "admin";
+
 export type AuthUser = {
   id: string;
   email: string | null;
   username: string | null;
+  role: UserRole;
+  isBanned: boolean;
 };
 
 /**
@@ -42,26 +46,35 @@ export function useAuthUser() {
           id: authUser.id,
           email: authUser.email ?? null,
           username: null,
+          role: "member",
+          isBanned: false,
         });
         setLoading(false);
 
         supabase
           .from("profiles")
-          .select("username")
+          .select("username, role, is_banned")
           .eq("id", authUser.id)
           .maybeSingle()
           .then(({ data }) => {
-            if (active && data?.username) {
+            if (active && data) {
               setUser({
                 id: authUser.id,
                 email: authUser.email ?? null,
                 username: data.username,
+                role: data.role,
+                isBanned: data.is_banned,
               });
             }
           });
       };
 
-      supabase.auth.getUser().then(({ data }) => applyUser(data.user));
+      // The proxy refreshes the session before the page renders. Read the
+      // resulting cookie instead of starting a second refresh from the client,
+      // which can race with the proxy and sign the member out.
+      supabase.auth
+        .getSession()
+        .then(({ data }) => applyUser(data.session?.user ?? null));
 
       const { data: subscription } = supabase.auth.onAuthStateChange(
         (_event, session) => {

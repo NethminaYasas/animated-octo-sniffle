@@ -68,22 +68,26 @@ export function BoardNav({
       <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
         Boards
       </p>
-      {BOARDS.map((board) => (
-        <button
-          key={board.id}
-          className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-sm text-left transition-colors ${
-            activeBoard === board.id
-              ? "bg-surface-muted text-ink"
-              : "text-body hover:bg-surface-muted hover:text-ink"
-          }`}
-          onClick={() => onBoardChange(board.id)}
-        >
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-[10px] font-bold text-muted">
-            {board.initial}
-          </span>
-          <span className="truncate">{board.name}</span>
-        </button>
-      ))}
+      {BOARDS.map((board) => {
+        const Icon = board.icon;
+
+        return (
+          <button
+            key={board.id}
+            className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-sm text-left transition-colors ${
+              activeBoard === board.id
+                ? "bg-surface-muted text-ink"
+                : "text-body hover:bg-surface-muted hover:text-ink"
+            }`}
+            onClick={() => onBoardChange(board.id)}
+          >
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-muted">
+              <Icon className="size-3.5" aria-hidden="true" />
+            </span>
+            <span className="truncate">{board.name}</span>
+          </button>
+        );
+      })}
       <p className="px-3 pt-3 text-[11px] leading-5 text-faint">
         Posts and comments are stored on this device until the database ships.
       </p>

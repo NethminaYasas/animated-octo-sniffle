@@ -23,9 +23,12 @@ import {
   Eye,
   X,
   Check,
+  ClipboardPaste,
 } from "lucide-react";
 
 import { MarkdownContent } from "@/components/markdown-content";
+import { quoteToHtml } from "@/lib/mentions";
+import { clearQuotes, removeQuote, useQuotes } from "@/lib/quotes";
 import { hasRichText } from "@/lib/rich-text";
 
 const INLINE_SIZES = {
@@ -45,6 +48,8 @@ export type MarkdownEditorProps = {
   ariaLabel?: string;
   onSubmit?: () => void;
   onEditorReady?: (element: HTMLDivElement | null) => void;
+  /** Show the copied-quotes clipboard. Used by the comment composer. */
+  quoteClipboard?: boolean;
 };
 
 function ToolbarButton({
@@ -79,6 +84,7 @@ export function MarkdownEditor({
   ariaLabel,
   onSubmit,
   onEditorReady,
+  quoteClipboard = false,
 }: MarkdownEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const setRefs = useCallback(
@@ -93,7 +99,10 @@ export function MarkdownEditor({
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
+  const [quotesOpen, setQuotesOpen] = useState(false);
   const savedRangeRef = useRef<Range | null>(null);
+  const quotes = useQuotes();
+  const previousQuoteCount = useRef(quotes.length);
   const textSizeId = id ? `${id}-text-size` : "markdown-text-size";
 
   // Keep the editor in sync with external value changes without replacing the
@@ -113,6 +122,16 @@ export function MarkdownEditor({
       // Browsers that do not support the command still work with divs.
     }
   }, []);
+
+  // When Reply or the selection Quote button copies something, open the
+  // clipboard so the action is visible and one click away from pasting.
+  useEffect(() => {
+    if (quotes.length > previousQuoteCount.current) {
+      setQuotesOpen(true);
+    }
+
+    previousQuoteCount.current = quotes.length;
+  }, [quotes.length]);
 
   const focusEditor = () => {
     editorRef.current?.focus();
@@ -401,6 +420,35 @@ export function MarkdownEditor({
     syncValue();
   };
 
+  const handlePasteQuotes = () => {
+    const el = editorRef.current;
+
+    if (!el || quotes.length === 0) {
+      return;
+    }
+
+    const html = `${quotes
+      .map((quote) => quoteToHtml(quote))
+      .join("")}<p><br></p>`;
+
+    el.insertAdjacentHTML("beforeend", html);
+    syncValue();
+    clearQuotes();
+    setQuotesOpen(false);
+
+    window.setTimeout(() => {
+      el.focus();
+
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }, 0);
+  };
+
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface">
       <div
@@ -502,6 +550,25 @@ export function MarkdownEditor({
             >
               <TextQuote className="size-4" />
             </ToolbarButton>
+            {quoteClipboard ? (
+              <ToolbarButton
+                label={
+                  quotes.length > 0
+                    ? `Copied quotes (${quotes.length})`
+                    : "Copied quotes"
+                }
+                onClick={() => setQuotesOpen((open) => !open)}
+              >
+                <span className="relative">
+                  <ClipboardPaste className="size-4" />
+                  {quotes.length > 0 ? (
+                    <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-orange-700 px-1 text-[9px] font-bold leading-none text-white">
+                      {quotes.length > 9 ? "9+" : quotes.length}
+                    </span>
+                  ) : null}
+                </span>
+              </ToolbarButton>
+            ) : null}
             <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
             <ToolbarButton
               label="Bulleted list"
@@ -522,6 +589,70 @@ export function MarkdownEditor({
               <Minus className="size-4" />
             </ToolbarButton>
           </div>
+
+          {quoteClipboard && quotesOpen ? (
+            <div className="border-b border-line bg-surface-muted/50 px-2 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  Copied quotes
+                </p>
+                {quotes.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={clearQuotes}
+                    className="text-[11px] font-semibold text-muted transition-colors hover:text-ink"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+
+              {quotes.length === 0 ? (
+                <p className="mt-1 text-xs text-faint">
+                  Select text in a comment or press Reply to copy a quote.
+                </p>
+              ) : (
+                <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+                  {quotes.map((quote) => (
+                    <li
+                      key={quote.id}
+                      className="flex items-start gap-2 rounded border border-line bg-surface px-2 py-1.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold text-ink">
+                          @{quote.author}
+                        </p>
+                        <p className="truncate text-[11px] text-muted">
+                          {quote.text}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeQuote(quote.id)}
+                        aria-label={`Remove quote from ${quote.author}`}
+                        title="Remove quote"
+                        className="grid size-6 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-surface-muted hover:text-ink"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {quotes.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={handlePasteQuotes}
+                  className="mt-2 inline-flex items-center gap-1 rounded bg-orange-700 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-orange-800"
+                >
+                  <ClipboardPaste className="size-3.5" />
+                  Paste{" "}
+                  {quotes.length === 1 ? "quote" : `${quotes.length} quotes`}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           {linkOpen ? (
             <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-muted/50 px-2 py-2">

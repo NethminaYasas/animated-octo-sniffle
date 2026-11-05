@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Noto_Sans_Sinhala, Noto_Sans_Tamil } from "next/font/google";
+
+import { SiteHeader } from "@/components/site-header";
+
 import "./globals.css";
 
 const notoSinhala = Noto_Sans_Sinhala({
@@ -50,6 +53,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <SiteHeader />
         {children}
       </body>
     </html>

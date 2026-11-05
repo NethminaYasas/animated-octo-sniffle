@@ -21,7 +21,7 @@ export async function updateSession(request: NextRequest) {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet, headers) {
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
@@ -31,6 +31,12 @@ export async function updateSession(request: NextRequest) {
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
         );
+
+        // Without these, a CDN or the Next.js cache can replay a response
+        // that carries one user's refreshed session to another request.
+        Object.entries(headers).forEach(([name, value]) => {
+          response.headers.set(name, value);
+        });
       },
     },
   });
