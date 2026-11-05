@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
-import { ArrowLeft, MessageSquare, Send, Reply } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { MessageSquare, Send, Reply } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
 import { SiteHeader } from "@/components/site-header";
+import { BoardNav } from "@/components/board-nav";
+import { BackHomeButton } from "@/components/back-home-button";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { MarkdownContent } from "@/components/markdown-content";
 import { PostActions } from "@/components/post-actions";
@@ -20,6 +22,46 @@ import {
   type SavedPost,
 } from "@/lib/feed-store";
 import { formatRelativeTime } from "@/lib/time";
+
+function ForumLayout({
+  activeBoard,
+  children,
+}: {
+  activeBoard?: string | null;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  const handleBoardNavSelect = (boardId: string | null) => {
+    router.push(boardId ? `/?board=${encodeURIComponent(boardId)}` : "/");
+  };
+
+  return (
+    <main className="flex flex-1 flex-col">
+      <SiteHeader />
+
+      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <div className="hidden lg:block">
+          <BoardNav activeBoard={activeBoard} onBoardChange={handleBoardNavSelect} />
+        </div>
+
+        <section className="min-w-0">{children}</section>
+      </div>
+
+      <Toaster
+        position="top-right"
+        theme="system"
+        toastOptions={{
+          classNames: {
+            toast: "rounded-lg border border-line bg-surface text-ink",
+            description: "text-muted",
+            actionButton: "bg-orange-700 hover:bg-orange-800",
+            cancelButton: "bg-surface-muted hover:bg-surface",
+          },
+        }}
+      />
+    </main>
+  );
+}
 
 function ThreadContent() {
   const params = useParams<{ id: string }>();
@@ -84,42 +126,32 @@ function ThreadContent() {
     });
   };
 
-  const backLink = (
-    <Link
-      href="/"
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink"
-    >
-      <ArrowLeft className="size-4" />
-      Back to feed
-    </Link>
-  );
-
   return (
-    <main className="flex flex-1 flex-col">
-      <SiteHeader />
+    <ForumLayout activeBoard={post?.boardId ?? undefined}>
+      <BackHomeButton />
 
-      <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
-        {backLink}
-
-        {post === undefined ? (
-          <div className="mt-4 rounded border border-line bg-surface px-4 py-10 text-center text-sm text-muted">
-            Loading…
-          </div>
-        ) : post === null ? (
-          <div className="mt-4 rounded border border-line bg-surface px-4 py-10 text-center">
-            <p className="text-sm font-semibold text-ink">Post not found</p>
-            <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted">
-              It may have been created on another device or browser, since posts
-              are stored locally for now.
-            </p>
-            <Link
-              href="/"
-              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-700 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-800"
-            >
-              Back to feed
-            </Link>
-          </div>
-        ) : (
+      {post === undefined ? (
+        <div
+          className="mt-4 rounded border border-line bg-surface px-4 py-10 text-center text-sm text-muted"
+          aria-busy="true"
+        >
+          Loading…
+        </div>
+      ) : post === null ? (
+        <div className="mt-4 rounded border border-line bg-surface px-4 py-10 text-center">
+          <p className="text-sm font-semibold text-ink">Post not found</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted">
+            It may have been created on another device or browser, since posts
+            are stored locally for now.
+          </p>
+          <Link
+            href="/"
+            className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-700 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-800"
+          >
+            Back to feed
+          </Link>
+        </div>
+      ) : (
           <>
             <article className="mt-4 rounded border border-line bg-surface p-4 sm:p-6">
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted">
@@ -238,33 +270,18 @@ function ThreadContent() {
             </section>
           </>
         )}
-      </div>
-
-      <Toaster
-        position="top-right"
-        theme="system"
-        toastOptions={{
-          classNames: {
-            toast: "rounded-lg border border-line bg-surface text-ink",
-            description: "text-muted",
-            actionButton: "bg-orange-700 hover:bg-orange-800",
-            cancelButton: "bg-surface-muted hover:bg-surface",
-          },
-        }}
-      />
-    </main>
+    </ForumLayout>
   );
 }
 
 function ThreadFallback() {
   return (
-    <main className="flex flex-1 flex-col">
-      <SiteHeader />
-      <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4" aria-busy="true">
+    <ForumLayout>
+      <div aria-busy="true">
         <div className="h-4 w-28 rounded bg-surface-muted" />
         <div className="mt-4 h-64 rounded border border-line bg-surface" />
       </div>
-    </main>
+    </ForumLayout>
   );
 }
 

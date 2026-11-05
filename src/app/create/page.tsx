@@ -14,6 +14,7 @@ import { Toaster, toast } from "sonner";
 
 import { SiteHeader } from "@/components/site-header";
 import { BoardNav } from "@/components/board-nav";
+import { BackHomeButton } from "@/components/back-home-button";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { BOARDS } from "@/lib/boards";
 import { savePost, type SavedPost } from "@/lib/feed-store";
@@ -291,6 +292,7 @@ export default function CreatePostPage() {
         </div>
 
         <section className="min-w-0">
+          <BackHomeButton />
           <div className="border-b border-line pb-3">
             <h1 className="text-lg font-semibold tracking-tight text-ink">
               Create a post
