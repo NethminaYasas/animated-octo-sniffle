@@ -1,5 +1,6 @@
 import { Shield, Sparkles, UserRound } from "lucide-react";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 
 import { LogoutButton } from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +15,9 @@ type ProfileRow = {
 };
 
 export async function ProfileContent() {
+  // JWT validation reads the current time, so this must run at request time.
+  await connection();
+
   const supabase = await createClient();
   const { data: claimsData, error: claimsError } =
     await supabase.auth.getClaims();

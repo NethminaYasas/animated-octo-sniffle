@@ -112,10 +112,9 @@ Replace both with the real widget keys before deploying.
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The Supabase status banner
-should say **Connected**. If the values are missing you will see **Setup
-needed**; if they are wrong you will see a short error explaining what to
-check.
+Open [http://localhost:3000](http://localhost:3000) and try `/signup` or
+`/login`. The home page no longer shows a Supabase connection banner; setup
+problems appear on the auth pages where they matter.
 
 Use the moon/sun button in the top bar to switch between light and dark mode.
 The first visit follows your operating-system preference, and the toggle
@@ -146,7 +145,7 @@ src/
     signup/           Registration page and server action
     globals.css       Tailwind styles and light/dark colour tokens
     layout.tsx        Root layout, metadata, fonts and theme bootstrap
-    page.tsx          Home page, forum shell and Supabase status banner
+    page.tsx          Home page and forum shell
   components/         Header, auth shell, Turnstile widget, markdown tools
   lib/
     auth/             Auth errors, redirects, Turnstile, validation
@@ -156,7 +155,6 @@ src/
       config.ts       Reads and validates the public env vars
       proxy.ts        Refreshes the session on every request
       server.ts       Cookie-aware Supabase client for the server
-      status.ts       Small read-only connection check for the home page
       types.ts        Generated database types
   proxy.ts            Next.js 16 proxy entry point
 supabase/
@@ -164,19 +162,18 @@ supabase/
   README.md           How to apply the schema and configure Auth URLs
 ```
 
-## Troubleshooting the connection card
+## Troubleshooting auth setup
 
-- **Setup needed** — `.env.local` does not exist or one of the two variables
-  is empty. Copy `.env.example` again and restart `npm run dev`.
-- **Supabase rejected the public key** — you copied the wrong key (for
-  example a `service_role` secret) or added extra whitespace.
-- **Supabase returned HTTP 404** — the project URL is wrong. Use the base
-  project URL, not a URL ending in `/rest/v1`.
-- **Could not reach Supabase** — check your internet connection and that the
-  Supabase project is not paused.
-- The check calls Supabase's read-only `/auth/v1/settings` endpoint. It does
-  not query the application tables, so it still succeeds before the database
-  migration is applied.
+- **Login says username login is not configured** — add
+  `SUPABASE_SERVICE_ROLE_KEY` to `.env.local` and restart `npm run dev`.
+- **CAPTCHA is not configured** — add `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and
+  `TURNSTILE_SECRET_KEY` to `.env.local`.
+- **Sign-up says the database is not set up** — run the migrations in
+  `supabase/migrations/` in filename order.
+- **Email link says it is invalid or expired** — check the Supabase Site URL
+  and redirect URLs, or switch the email templates to the `/auth/confirm`
+  `token_hash` links (see [supabase/README.md](./supabase/README.md)).
+- **Supabase project paused** — resume it in the dashboard.
 
 ## Secrets warning
 

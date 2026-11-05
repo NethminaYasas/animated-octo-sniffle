@@ -231,16 +231,13 @@ Apply these to every task.
 - The public Supabase key is stored in `NEXT_PUBLIC_SUPABASE_ANON_KEY`, as
   requested. Supabase now labels the equivalent public key as the
   "publishable key"; either works here.
-- The home page connection check calls the read-only Supabase Auth
-  `/auth/v1/settings` endpoint. The application tables that a normal database
-  query would need are not created until step 2.
-- The Supabase session-refresh proxy is deferred to the authentication step.
-  The server client is already cookie-aware, so no authentication behaviour
-  is missing in step 1.
-- The server-rendered connection check reads environment values at request
-  time (verified with a production build and values supplied only at startup).
-  Client Components that call Supabase will need the `NEXT_PUBLIC_*` values
-  available when the app is built, which is a later deployment concern.
+- The step 1 home page connection card was removed once the schema and
+  authentication were built. Setup problems now appear on the auth pages.
+- The Supabase session-refresh proxy was added in the authentication step
+  (`src/proxy.ts`).
+- Client Components that call Supabase need the `NEXT_PUBLIC_*` values
+  available when the app is built. The auth pages read them at runtime or
+  build time as appropriate.
 - The home page uses a Reddit-style forum shell: top bar, board navigation
   and a central thread feed. There is no right sidebar. Non-functional
   controls are visibly disabled rather than pretending to work before their
@@ -256,10 +253,6 @@ Apply these to every task.
   comments (replies) only.
 - The Next.js development indicator is disabled in `next.config.ts` so it
   does not cover the bottom-left of the page during development.
-- The Supabase status is streamed behind a `Suspense` boundary, so the forum
-  shell paints immediately even if the project check is slow or unreachable.
-- The connection check is bounded by a 3-second timeout and returns a visible
-  error state instead of hanging indefinitely.
 
 ## Implementation decisions (step 2)
 

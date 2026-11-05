@@ -2,14 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, Suspense, type ReactNode } from "react";
-import {
-  Plus,
-  MessageSquare,
-  AlertCircle,
-  CheckCircle,
-  Info,
-} from "lucide-react";
+import { useState, useEffect, Suspense } from "react";
+import { Plus, MessageSquare } from "lucide-react";
 import { Toaster } from "sonner";
 
 import { SiteHeader } from "@/components/site-header";
@@ -20,153 +14,6 @@ import { BOARDS } from "@/lib/boards";
 import { SEED_POSTS } from "@/lib/seed-posts";
 import { loadPosts, loadComments, type SavedPost } from "@/lib/feed-store";
 import { formatRelativeTime } from "@/lib/time";
-
-type StatusTone = "neutral" | "success" | "warning" | "error";
-
-const statusStyles: Record<
-  StatusTone,
-  { container: string; dot: string }
-> = {
-  neutral: {
-    container: "border-line bg-surface text-muted",
-    dot: "bg-gray-400",
-  },
-  success: {
-    container: "border-line bg-surface text-muted",
-    dot: "bg-emerald-500",
-  },
-  warning: {
-    container:
-      "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200",
-    dot: "bg-amber-500",
-  },
-  error: {
-    container:
-      "border-red-200 bg-red-50 text-red-900 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200",
-    dot: "bg-red-500",
-  },
-};
-
-function StatusStrip({
-  tone,
-  title,
-  detail,
-}: {
-  tone: StatusTone;
-  title: string;
-  detail?: ReactNode;
-}) {
-  const styles = statusStyles[tone];
-
-  const iconMap = {
-    neutral: <Info className="size-4" />,
-    success: <CheckCircle className="size-4" />,
-    warning: <AlertCircle className="size-4" />,
-    error: <AlertCircle className="size-4" />,
-  };
-
-  return (
-    <div
-      className={`mt-3 flex items-start gap-2 rounded border px-3 py-2 ${styles.container}`}
-    >
-      <span
-        aria-hidden="true"
-        className={`mt-1.5 size-2 shrink-0 rounded-full ${styles.dot}`}
-      />
-      <div className="min-w-0">
-        <p className="text-xs font-semibold flex items-center gap-1.5">
-          {iconMap[tone]}
-          {title}
-        </p>
-        {detail ? (
-          <div className="mt-0.5 text-xs leading-5 opacity-80">{detail}</div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function SupabaseStatus() {
-  const [status, setStatus] = useState<{
-    state: "connected" | "unconfigured" | "error";
-    message?: string;
-  } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/supabase-status", { cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        return res.json();
-      })
-      .then((data) =>
-        setStatus(
-          data &&
-            ["connected", "unconfigured", "error"].includes(data.state)
-            ? data
-            : { state: "error", message: "Unexpected status response." }
-        )
-      )
-      .catch(() =>
-        setStatus({ state: "error", message: "Failed to check connection" })
-      );
-  }, []);
-
-  if (!status) {
-    return (
-      <StatusStrip
-        tone="neutral"
-        title="Checking Supabase…"
-        detail="Waiting for the project to respond."
-      />
-    );
-  }
-
-  if (status.state === "connected") {
-    return (
-      <StatusStrip
-        tone="success"
-        title="Connected"
-        detail="Supabase is reachable and the project settings were accepted."
-      />
-    );
-  }
-
-  if (status.state === "unconfigured") {
-    return (
-      <StatusStrip
-        tone="warning"
-        title="Setup needed"
-        detail={
-          <>
-            Add{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 text-[11px] dark:bg-amber-900/50">
-              NEXT_PUBLIC_SUPABASE_URL
-            </code>{" "}
-            and{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 text-[11px] dark:bg-amber-900/50">
-              NEXT_PUBLIC_SUPABASE_ANON_KEY
-            </code>{" "}
-            to <code className="text-[11px]">.env.local</code>, then restart the
-            dev server. The README has the full steps.
-          </>
-        }
-      />
-    );
-  }
-
-  return (
-    <StatusStrip
-      tone="error"
-      title="Connection error"
-      detail={
-        <>
-          {status.message} See the troubleshooting section in{" "}
-          <code className="text-[11px]">README.md</code>.
-        </>
-      }
-    />
-  );
-}
 
 type SortOption = "new" | "hot" | "best";
 
@@ -414,18 +261,6 @@ function HomeContent() {
               Create post
             </Link>
           </div>
-
-          <Suspense
-            fallback={
-              <StatusStrip
-                tone="neutral"
-                title="Checking Supabase…"
-                detail="Waiting for the project to respond."
-              />
-            }
-          >
-            <SupabaseStatus />
-          </Suspense>
 
           <SortTabs activeSort={activeSort} onSortChange={setActiveSort} />
 
