@@ -124,13 +124,13 @@ If you change `.env.local`, stop and restart the dev server.
 
 ## Writing posts and comments
 
-- The Markdown editor has **Write / Preview** tabs. Preview renders the same
-  Markdown (and embeds) as posts and comments.
+- The post/comment editor is a visual rich-text editor with **Write / Preview**
+  tabs. Write shows formatted text, not source markup; Preview shows the
+  sanitized result.
 - The toolbar supports bold, italic, strikethrough, inline code, links,
   quotes, lists and horizontal rules.
-- The **Editor font size** selector (Small, Medium, Large, X-Large) changes the
-  writing font and the preview. It is saved in the browser and applies to both
-  posts and comments.
+- The **Text size** selector (Small, Medium, Large, X-Large) applies to the
+  selected text. With no selection, it applies to the text you type next.
 - Paste a supported link **on its own line** to embed it: YouTube, Vimeo,
   Reddit, Facebook, X/Twitter, Instagram, TikTok or Spotify. A link inside a
   sentence stays a normal link.
@@ -138,7 +138,7 @@ If you change `.env.local`, stop and restart the dev server.
   "Open original" link.
 
 The site baseline is 19px so the forum is comfortable to read on a desktop;
-the editor has its own size control for writing.
+the editor's Text size control applies to the text you select or type next.
 
 ## Available scripts
 
@@ -164,7 +164,7 @@ src/
     globals.css       Tailwind styles and light/dark colour tokens
     layout.tsx        Root layout, metadata, fonts and theme bootstrap
     page.tsx          Home page and forum shell
-  components/         Header, auth shell, Turnstile, markdown editor, embeds
+  components/         Header, auth shell, Turnstile, rich text editor, embeds
   lib/
     auth/             Auth errors, redirects, Turnstile, validation
     supabase/

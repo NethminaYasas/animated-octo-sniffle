@@ -288,8 +288,8 @@ export default function CreatePostPage() {
               Create a post
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Posts and comments are saved on this device until accounts and the database
-              are added. Markdown is supported.
+              Posts and comments are saved on this device until accounts and the
+              database are added. Use the toolbar to format text.
             </p>
           </div>
 

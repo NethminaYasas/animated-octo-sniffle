@@ -67,11 +67,89 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Rich text editor (contentEditable)
+   --------------------------------------------------------------------------- */
+.rich-editor:empty::before {
+  color: var(--faint);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.rich-editor p,
+.rich-editor div {
+  margin: 0.75rem 0;
+}
+
+.rich-editor p:first-child,
+.rich-editor div:first-child {
+  margin-top: 0;
+}
+
+.rich-editor p:last-child,
+.rich-editor div:last-child {
+  margin-bottom: 0;
+}
+
+.rich-editor ul,
+.rich-editor ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+
+.rich-editor ul {
+  list-style: disc;
+}
+
+.rich-editor ol {
+  list-style: decimal;
+}
+
+.rich-editor blockquote {
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+  margin: 0.75rem 0;
+  padding: 0.25rem 0 0.25rem 1rem;
+}
+
+.rich-editor code {
+  background: var(--surface-muted);
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.4em;
+}
+
+.rich-editor a {
+  color: #c2410c;
+  text-decoration: underline;
+}
+
+.dark .rich-editor a {
+  color: #fdba74;
+}
+
+.rich-editor [data-size="sm"] {
+  font-size: 0.85em;
+}
+
+.rich-editor [data-size="md"] {
+  font-size: 1em;
+}
+
+.rich-editor [data-size="lg"] {
+  font-size: 1.15em;
+}
+
+.rich-editor [data-size="xl"] {
+  font-size: 1.3em;
+}
+
+/* ---------------------------------------------------------------------------
    Rendered markdown output (.markdown-body)
    --------------------------------------------------------------------------- */
 .markdown-body {
   color: var(--body);
-  font-size: var(--markdown-font-size, 1rem);
+  font-size: 1rem;
   line-height: 1.7;
   overflow-wrap: break-word;
 }
@@ -84,7 +162,8 @@ body {
   margin-bottom: 0;
 }
 
-.markdown-body p {
+.markdown-body p,
+.markdown-body div {
   margin: 0.75rem 0;
 }
 
@@ -119,6 +198,24 @@ body {
 .markdown-body strong {
   color: var(--ink);
   font-weight: 600;
+}
+
+/* Inline text sizes written by the editor as
+   <span data-size="...">...</span>. The sanitizer only allows these values. */
+.text-size-sm {
+  font-size: 0.85em;
+}
+
+.text-size-md {
+  font-size: 1em;
+}
+
+.text-size-lg {
+  font-size: 1.15em;
+}
+
+.text-size-xl {
+  font-size: 1.3em;
 }
 
 .markdown-body em {

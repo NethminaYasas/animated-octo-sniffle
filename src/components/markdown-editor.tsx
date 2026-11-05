@@ -1,14 +1,13 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
-  type RefObject,
 } from "react";
 import {
   Bold,
@@ -27,15 +26,16 @@ import {
 } from "lucide-react";
 
 import { MarkdownContent } from "@/components/markdown-content";
+import { hasRichText } from "@/lib/rich-text";
 
-const EDITOR_FONT_SIZES = {
-  sm: "0.9rem",
-  md: "1rem",
-  lg: "1.125rem",
-  xl: "1.25rem",
+const INLINE_SIZES = {
+  sm: "Small",
+  md: "Medium",
+  lg: "Large",
+  xl: "X-Large",
 } as const;
 
-type EditorFontSize = keyof typeof EDITOR_FONT_SIZES;
+type InlineSize = keyof typeof INLINE_SIZES;
 
 export type MarkdownEditorProps = {
   id?: string;
@@ -45,7 +45,7 @@ export type MarkdownEditorProps = {
   rows?: number;
   ariaLabel?: string;
   onSubmit?: () => void;
-  textareaRef?: RefObject<HTMLTextAreaElement | null>;
+  onEditorReady?: (element: HTMLDivElement | null) => void;
 };
 
 function ToolbarButton({
@@ -75,177 +75,185 @@ export function MarkdownEditor({
   id,
   value,
   onChange,
-  placeholder = "Write something…",
+  placeholder = "Write something...",
   rows = 8,
   ariaLabel,
   onSubmit,
-  textareaRef: textareaRefProp,
+  onEditorReady,
 }: MarkdownEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const setRefs = (el: HTMLTextAreaElement | null) => {
-    textareaRef.current = el;
-    if (textareaRefProp) {
-      textareaRefProp.current = el;
-    }
-  };
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const setRefs = useCallback(
+    (el: HTMLDivElement | null) => {
+      editorRef.current = el;
+      onEditorReady?.(el);
+    },
+    [onEditorReady],
+  );
+
   const [mode, setMode] = useState<"write" | "preview">("write");
-  const [fontSize, setFontSize] = useState<EditorFontSize>("md");
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
-  const linkSelectionRef = useRef<{ start: number; end: number } | null>(null);
-  const fontSizeId = id ? `${id}-font-size` : "markdown-font-size";
+  const savedRangeRef = useRef<Range | null>(null);
+  const textSizeId = id ? `${id}-text-size` : "markdown-text-size";
+
+  // Keep the editor in sync with external value changes without replacing the
+  // DOM (and losing the caret) on every keystroke.
+  useEffect(() => {
+    const el = editorRef.current;
+
+    if (el && el.innerHTML.replace(/\u200B/g, "") !== value) {
+      el.innerHTML = value;
+    }
+  }, [value]);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("editor-font-size");
-
-      if (
-        saved === "sm" ||
-        saved === "md" ||
-        saved === "lg" ||
-        saved === "xl"
-      ) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the saved editor preference after mount
-        setFontSize(saved);
-      }
+      document.execCommand("defaultParagraphSeparator", false, "p");
     } catch {
-      // Use the default when storage is unavailable.
+      // Browsers that do not support the command still work with divs.
     }
   }, []);
 
-  const changeFontSize = (value: EditorFontSize) => {
-    setFontSize(value);
+  const focusEditor = () => {
+    editorRef.current?.focus();
+  };
 
-    try {
-      localStorage.setItem("editor-font-size", value);
-    } catch {
-      // Ignore storage errors; the size still applies for this visit.
+  const getActiveRange = () => {
+    const selection = window.getSelection();
+
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+
+      if (editorRef.current?.contains(range.commonAncestorContainer)) {
+        return range;
+      }
+    }
+
+    return savedRangeRef.current;
+  };
+
+  const saveSelection = () => {
+    const range = getActiveRange();
+
+    if (range) {
+      savedRangeRef.current = range.cloneRange();
     }
   };
 
-  const restoreSelection = (start: number, end: number) => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.focus();
-    requestAnimationFrame(() => el.setSelectionRange(start, end));
-  };
+  const restoreRange = (range: Range) => {
+    const selection = window.getSelection();
 
-  const toggleInline = (before: string, after: string, placeholderText: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-
-    const { selectionStart: start, selectionEnd: end } = el;
-    const selected = value.slice(start, end) || placeholderText;
-
-    const isPartOfLongerRun =
-      before === "*" && (value[start - 2] === "*" || value[end + 1] === "*");
-    const beforeMatches =
-      !isPartOfLongerRun && value.slice(Math.max(0, start - before.length), start) === before;
-    const afterMatches =
-      !isPartOfLongerRun && value.slice(end, end + after.length) === after;
-
-    if (beforeMatches && afterMatches) {
-      // Already wrapped — unwrap.
-      const next =
-        value.slice(0, start - before.length) +
-        selected +
-        value.slice(end + after.length);
-      onChange(next);
-      restoreSelection(start - before.length, start - before.length + selected.length);
+    if (!selection) {
       return;
     }
 
-    const next = value.slice(0, start) + before + selected + after + value.slice(end);
-    onChange(next);
-    restoreSelection(start + before.length, start + before.length + selected.length);
+    selection.removeAllRanges();
+    selection.addRange(range);
   };
 
-  const lineRange = (el: HTMLTextAreaElement) => {
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const startLine = value.lastIndexOf("\n", start - 1) + 1;
-    let endLine = value.indexOf("\n", end);
-    if (endLine === -1) endLine = value.length;
-    return { startLine, endLine };
+  const syncValue = () => {
+    const el = editorRef.current;
+
+    if (!el) {
+      return;
+    }
+
+    const text = el.textContent?.replace(/\u200B/g, "") ?? "";
+    const html = el.innerHTML.replace(/\u200B/g, "");
+    const hasContentElement = Array.from(el.querySelectorAll("*")).some(
+      (node) => !["br", "p", "div"].includes(node.tagName.toLowerCase()),
+    );
+
+    onChange(text.trim() === "" && !hasContentElement ? "" : html);
   };
 
-  const reselectBlock = (start: number, text: string) => {
-    restoreSelection(start, start + text.length);
+  const exec = (command: string, value?: string) => {
+    const range = getActiveRange();
+
+    focusEditor();
+
+    if (range) {
+      restoreRange(range);
+    }
+
+    document.execCommand(command, false, value);
+    syncValue();
   };
 
-  const toggleLinePrefix = (prefix: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
+  const wrapSelection = (tagName: string) => {
+    const range = getActiveRange();
 
-    const { startLine, endLine } = lineRange(el);
-    const before = value.slice(0, startLine);
-    const block = value.slice(startLine, endLine);
-    const after = value.slice(endLine);
-    const lines = block.split("\n");
+    if (!range) {
+      return;
+    }
 
-    const nonEmpty = lines.filter((line) => line.trim() !== "");
-    const allHave =
-      nonEmpty.length > 0 && nonEmpty.every((line) => line.startsWith(prefix));
+    focusEditor();
+    restoreRange(range);
 
-    const nextLines = lines.map((line) => {
-      if (line.trim() === "") return line;
-      if (allHave) return line.startsWith(prefix) ? line.slice(prefix.length) : line;
-      return prefix + line;
-    });
+    const element = document.createElement(tagName);
 
-    const joined = nextLines.join("\n");
-    onChange(before + joined + after);
-    reselectBlock(startLine, joined);
+    if (range.collapsed) {
+      element.textContent = "\u200B";
+      range.insertNode(element);
+
+      const next = document.createRange();
+      next.setStart(element.firstChild!, 1);
+      next.collapse(true);
+      restoreRange(next);
+    } else {
+      element.appendChild(range.extractContents());
+      range.insertNode(element);
+
+      const next = document.createRange();
+      next.selectNodeContents(element);
+      restoreRange(next);
+    }
+
+    syncValue();
   };
 
-  const toggleNumberedList = () => {
-    const el = textareaRef.current;
-    if (!el) return;
+  const applyInlineSize = (size: InlineSize) => {
+    const range = getActiveRange();
 
-    const { startLine, endLine } = lineRange(el);
-    const before = value.slice(0, startLine);
-    const block = value.slice(startLine, endLine);
-    const after = value.slice(endLine);
-    const lines = block.split("\n");
+    if (!range) {
+      return;
+    }
 
-    const nonEmpty = lines.filter((line) => line.trim() !== "");
-    const allNumbered =
-      nonEmpty.length > 0 && nonEmpty.every((line) => /^\d+\.\s/.test(line));
+    focusEditor();
+    restoreRange(range);
 
-    let index = 0;
-    const nextLines = lines.map((line) => {
-      if (line.trim() === "") return line;
-      if (allNumbered) return line.replace(/^\d+\.\s/, "");
-      index += 1;
-      return `${index}. ${line}`;
-    });
+    const span = document.createElement("span");
+    span.setAttribute("data-size", size);
 
-    const joined = nextLines.join("\n");
-    onChange(before + joined + after);
-    reselectBlock(startLine, joined);
-  };
+    if (range.collapsed) {
+      span.textContent = "\u200B";
+      range.insertNode(span);
 
-  const insertHorizontalRule = () => {
-    const el = textareaRef.current;
-    if (!el) return;
+      const next = document.createRange();
+      next.setStart(span.firstChild!, 1);
+      next.collapse(true);
+      restoreRange(next);
+    } else {
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
 
-    const { selectionStart: start, selectionEnd: end } = el;
-    const beforeText = value.slice(0, start);
-    const block = `${beforeText.endsWith("\n") ? "" : "\n"}\n---\n\n`;
-    const next = beforeText + block + value.slice(end);
-    onChange(next);
-    restoreSelection(beforeText.length + block.length, beforeText.length + block.length);
+      const next = document.createRange();
+      next.selectNodeContents(span);
+      restoreRange(next);
+    }
+
+    syncValue();
   };
 
   const openLinkPanel = () => {
-    const el = textareaRef.current;
-    if (!el) return;
+    const range = getActiveRange();
 
-    const { selectionStart: start, selectionEnd: end } = el;
-    const selected = value.slice(start, end);
-    linkSelectionRef.current = { start, end };
-    setLinkLabel(selected);
+    if (range) {
+      savedRangeRef.current = range.cloneRange();
+    }
+
+    setLinkLabel(range && !range.collapsed ? range.toString() : "");
     setLinkUrl("");
     setLinkOpen(true);
   };
@@ -254,34 +262,59 @@ export function MarkdownEditor({
     setLinkOpen(false);
     setLinkUrl("");
     setLinkLabel("");
-    linkSelectionRef.current = null;
-    textareaRef.current?.focus();
+
+    const range = savedRangeRef.current;
+    focusEditor();
+
+    if (range) {
+      restoreRange(range);
+    }
   };
 
   const applyLink = () => {
-    const target = linkSelectionRef.current;
-    if (!target) return;
+    const range = getActiveRange();
+    const trimmed = linkUrl.trim();
 
-    const trimmedUrl = linkUrl.trim();
-    if (trimmedUrl === "") {
+    if (!range || trimmed === "") {
       closeLinkPanel();
       return;
     }
 
-    const normalized =
-      /^(https?:\/\/|mailto:)/i.test(trimmedUrl)
-        ? trimmedUrl
-        : `https://${trimmedUrl}`;
-    const label = linkLabel.trim() || "link";
-    const insertion = `[${label}](${normalized})`;
+    const normalized = /^(https?:\/\/|mailto:)/i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
 
-    const next = value.slice(0, target.start) + insertion + value.slice(target.end);
-    onChange(next);
+    if (!/^(https?:\/\/|mailto:)/i.test(normalized)) {
+      closeLinkPanel();
+      return;
+    }
+
+    const label =
+      linkLabel.trim() ||
+      (range.collapsed ? normalized : range.toString()) ||
+      normalized;
+
+    const anchor = document.createElement("a");
+    anchor.setAttribute("href", normalized);
+    anchor.setAttribute("target", "_blank");
+    anchor.setAttribute("rel", "noopener noreferrer");
+    anchor.textContent = label;
+
+    focusEditor();
+    restoreRange(range);
+    range.deleteContents();
+    range.insertNode(anchor);
+
+    const next = document.createRange();
+    next.setStartAfter(anchor);
+    next.collapse(true);
+    restoreRange(next);
+
+    syncValue();
     setLinkOpen(false);
     setLinkUrl("");
     setLinkLabel("");
-    linkSelectionRef.current = null;
-    restoreSelection(target.start + insertion.length, target.start + insertion.length);
+    savedRangeRef.current = null;
   };
 
   const handleLinkKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -294,17 +327,21 @@ export function MarkdownEditor({
     }
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const mod = event.ctrlKey || event.metaKey;
-    if (!mod) return;
+
+    if (!mod) {
+      return;
+    }
 
     const key = event.key.toLowerCase();
+
     if (key === "b") {
       event.preventDefault();
-      toggleInline("**", "**", "bold text");
+      exec("bold");
     } else if (key === "i") {
       event.preventDefault();
-      toggleInline("*", "*", "italic text");
+      exec("italic");
     } else if (key === "k") {
       event.preventDefault();
       openLinkPanel();
@@ -314,11 +351,18 @@ export function MarkdownEditor({
     }
   };
 
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
+    syncValue();
+  };
+
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface">
       <div
         role="tablist"
-        aria-label="Markdown editor mode"
+        aria-label="Editor mode"
         className="flex items-center gap-1 border-b border-line bg-surface-muted px-1.5 py-1"
       >
         <button
@@ -351,61 +395,87 @@ export function MarkdownEditor({
         </button>
       </div>
 
-      <div>
-        <div
-          className={`min-w-0 ${mode === "write" ? "block" : "hidden"}`}
-          role="tabpanel"
-          aria-label="Markdown editor"
-        >
+      {mode === "write" ? (
+        <div role="tabpanel" aria-label="Editor">
           <div
             className="flex flex-wrap items-center gap-0.5 border-b border-line px-1.5 py-1"
+            onMouseDown={saveSelection}
           >
-            <ToolbarButton label="Bold (Ctrl+B)" onClick={() => toggleInline("**", "**", "bold text")}>
+            <ToolbarButton label="Bold (Ctrl+B)" onClick={() => exec("bold")}>
               <Bold className="size-4" />
             </ToolbarButton>
-            <ToolbarButton label="Italic (Ctrl+I)" onClick={() => toggleInline("*", "*", "italic text")}>
+            <ToolbarButton label="Italic (Ctrl+I)" onClick={() => exec("italic")}>
               <Italic className="size-4" />
             </ToolbarButton>
-            <ToolbarButton label="Strikethrough" onClick={() => toggleInline("~~", "~~", "struck text")}>
+            <ToolbarButton
+              label="Strikethrough"
+              onClick={() => exec("strikeThrough")}
+            >
               <Strikethrough className="size-4" />
             </ToolbarButton>
-            <ToolbarButton label="Inline code" onClick={() => toggleInline("`", "`", "code")}>
+            <ToolbarButton
+              label="Inline code"
+              onClick={() => wrapSelection("code")}
+            >
               <Code className="size-4" />
             </ToolbarButton>
             <ToolbarButton label="Link (Ctrl+K)" onClick={openLinkPanel}>
               <Link2 className="size-4" />
             </ToolbarButton>
             <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
-            <label className="sr-only" htmlFor={fontSizeId}>
-              Editor font size
+            <label className="sr-only" htmlFor={textSizeId}>
+              Text size for selected text
             </label>
             <select
-              id={fontSizeId}
-              aria-label="Editor font size"
-              title="Editor font size"
-              value={fontSize}
-              onChange={(event) =>
-                changeFontSize(event.target.value as EditorFontSize)
-              }
+              id={textSizeId}
+              aria-label="Text size for selected text"
+              title="Text size for selected text"
+              defaultValue=""
+              onMouseDown={saveSelection}
+              onChange={(event) => {
+                const size = event.target.value as InlineSize | "";
+
+                if (size) {
+                  applyInlineSize(size);
+                }
+
+                event.target.value = "";
+              }}
               className="h-8 rounded border border-line bg-surface px-1.5 text-xs font-semibold text-muted focus:outline-none focus:ring-2 focus:ring-orange-700"
             >
-              <option value="sm">Small</option>
-              <option value="md">Medium</option>
-              <option value="lg">Large</option>
-              <option value="xl">X-Large</option>
+              <option value="" disabled>
+                Size
+              </option>
+              {(Object.keys(INLINE_SIZES) as InlineSize[]).map((size) => (
+                <option key={size} value={size}>
+                  {INLINE_SIZES[size]}
+                </option>
+              ))}
             </select>
             <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
-            <ToolbarButton label="Quote" onClick={() => toggleLinePrefix("> ")}>
+            <ToolbarButton
+              label="Quote"
+              onClick={() => exec("formatBlock", "blockquote")}
+            >
               <TextQuote className="size-4" />
             </ToolbarButton>
             <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
-            <ToolbarButton label="Bulleted list" onClick={() => toggleLinePrefix("- ")}>
+            <ToolbarButton
+              label="Bulleted list"
+              onClick={() => exec("insertUnorderedList")}
+            >
               <List className="size-4" />
             </ToolbarButton>
-            <ToolbarButton label="Numbered list" onClick={toggleNumberedList}>
+            <ToolbarButton
+              label="Numbered list"
+              onClick={() => exec("insertOrderedList")}
+            >
               <ListOrdered className="size-4" />
             </ToolbarButton>
-            <ToolbarButton label="Horizontal rule" onClick={insertHorizontalRule}>
+            <ToolbarButton
+              label="Horizontal rule"
+              onClick={() => exec("insertHorizontalRule")}
+            >
               <Minus className="size-4" />
             </ToolbarButton>
           </div>
@@ -452,54 +522,44 @@ export function MarkdownEditor({
             </div>
           ) : null}
 
-          <textarea
+          <div
             ref={setRefs}
             id={id}
-            rows={rows}
+            role="textbox"
+            aria-multiline="true"
             aria-label={ariaLabel}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
+            contentEditable
+            suppressContentEditableWarning
+            data-placeholder={placeholder}
+            onInput={syncValue}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            spellCheck={false}
-            style={{ fontSize: EDITOR_FONT_SIZES[fontSize] }}
-            className="block w-full resize-y bg-surface px-3 py-3 font-mono leading-relaxed text-ink placeholder:text-faint focus:outline-none"
+            onPaste={handlePaste}
+            className="rich-editor block w-full whitespace-pre-wrap break-words bg-surface px-3 py-3 text-base leading-relaxed text-ink focus:outline-none"
+            style={{ minHeight: `${Math.max(rows, 4) * 1.75}rem` }}
           />
           <div className="flex items-center justify-between border-t border-line px-3 py-2 text-xs text-faint">
-            <span>Markdown supported · paste a supported link on its own line to embed it</span>
-            <span aria-live="polite">
-              {value.length.toLocaleString()} characters
+            <span>
+              Formatted text is saved with your post. Paste a supported link on
+              its own line to embed it.
             </span>
+            <span aria-live="polite">Ctrl+Enter</span>
           </div>
         </div>
-
+      ) : (
         <div
-          className={`min-w-0 ${mode === "preview" ? "block" : "hidden"}`}
           role="tabpanel"
-          aria-label="Markdown preview"
+          aria-label="Preview"
+          className="max-h-[70vh] overflow-y-auto px-3 py-3"
         >
-          <div className="flex items-center gap-1.5 border-b border-line bg-surface-muted px-3 py-2 text-xs font-semibold text-muted">
-            <Eye className="size-4" />
-            Live preview
-          </div>
-          <div
-            className="max-h-[34rem] min-h-[14rem] overflow-y-auto px-3 py-3"
-            style={
-              {
-                "--markdown-font-size": EDITOR_FONT_SIZES[fontSize],
-              } as CSSProperties
-            }
-          >
-            {value.trim() === "" ? (
-              <p className="py-10 text-center text-sm text-faint">
-                Nothing to preview yet. Start writing in the Write tab.
-              </p>
-            ) : (
-              <MarkdownContent>{value}</MarkdownContent>
-            )}
-          </div>
+          {!hasRichText(value) ? (
+            <p className="py-10 text-center text-sm text-faint">
+              Nothing to preview yet. Start writing in the Write tab.
+            </p>
+          ) : (
+            <MarkdownContent>{value}</MarkdownContent>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

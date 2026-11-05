@@ -338,12 +338,20 @@ Apply these to every task.
 
 ## Implementation decisions (editor and embeds)
 
-- The Markdown editor uses Write/Preview tabs, one pane at a time, on every
-  screen. The preview uses the same `MarkdownContent` renderer as posts and
-  comments.
-- The toolbar no longer has heading buttons. An Editor font size selector
-  (Small / Medium / Large / X-Large) changes the textarea and preview font
-  size, persists in `localStorage`, and applies to both posts and comments.
+- The post/comment editor is a contentEditable rich-text editor with
+  Write/Preview tabs, one pane at a time, on every screen. Write shows
+  formatted text, not HTML source. Preview uses the same `MarkdownContent`
+  renderer as posts and comments.
+- The toolbar's Text size selector (Small / Medium / Large / X-Large) wraps the
+  selected text in a `span[data-size]`. With no selection it inserts an empty
+  span and places the caret inside, so the next typed text uses that size. The
+  span is styled in the editor and sanitized on render; the raw markup is never
+  shown to the author.
+- The editor stores HTML in `posts.content` and comment bodies. The renderer
+  also handles legacy Markdown content. Pasted content is inserted as plain
+  text so arbitrary HTML/styles do not enter the editor.
+- `hasRichText()` treats empty formatting shells as empty, so the Comment
+  button stays disabled until real text or a rule is present.
 - The site baseline font size is 19px; `.markdown-body` is 1rem with a 1.7 line
   height so posts and comments are comfortable to read.
 - Embeds are limited to a whitelist: YouTube (privacy-enhanced nocookie),
@@ -351,10 +359,15 @@ Apply these to every task.
 - A supported URL is embedded only when it is alone in a paragraph. A URL in a
   sentence remains a normal link.
 - Embed iframe URLs are rebuilt from validated hosts and IDs; raw user URLs are
-  never used as iframe sources. Raw HTML stays disabled via `skipHtml`.
+  never used as iframe sources. Raw HTML is parsed and sanitized; the only
+  extra element allowed is `span[data-size="sm|md|lg|xl"]`, and scripts, styles
+  and event handlers are stripped.
 - Embeds are lazy-loaded, include an "Open original" link, and render in posts,
   comments and the editor preview.
 - When a Content Security Policy is added, allow `frame-src` for
   `youtube-nocookie.com`, `player.vimeo.com`, `redditmedia.com`,
   `facebook.com`, `platform.twitter.com`, `instagram.com`, `tiktok.com` and
   `open.spotify.com`.
+- The home, create and thread pages read the query string/path after mount
+  instead of `useSearchParams`/`useParams`. This avoids the Next 16 Cache
+  Components Suspense stall on these client-rendered pages.
