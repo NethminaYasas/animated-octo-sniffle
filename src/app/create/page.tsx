@@ -9,10 +9,11 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { ArrowLeft, ChevronDown, Check, Send } from "lucide-react";
+import { ChevronDown, Check, Send } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
 import { SiteHeader } from "@/components/site-header";
+import { BoardNav } from "@/components/board-nav";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { BOARDS } from "@/lib/boards";
 import { savePost, type SavedPost } from "@/lib/feed-store";
@@ -274,28 +275,36 @@ function CreatePostForm() {
 }
 
 export default function CreatePostPage() {
+  const router = useRouter();
+
+  const handleBoardNavSelect = (boardId: string | null) => {
+    router.push(boardId ? `/?board=${encodeURIComponent(boardId)}` : "/");
+  };
+
   return (
     <main className="flex flex-1 flex-col">
       <SiteHeader />
 
-      <div className="mx-auto w-full max-w-3xl px-3 py-6 sm:px-4">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink"
-        >
-          <ArrowLeft className="size-4" />
-          Back to feed
-        </Link>
+      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <div className="hidden lg:block">
+          <BoardNav activeBoard={undefined} onBoardChange={handleBoardNavSelect} />
+        </div>
 
-        <h1 className="mt-4 text-2xl font-bold tracking-tight text-ink">Create a post</h1>
-        <p className="mt-1 text-sm text-muted">
-          Posts and comments are saved on this device until accounts and the database
-          are added. Markdown is supported.
-        </p>
+        <section className="min-w-0">
+          <div className="border-b border-line pb-3">
+            <h1 className="text-lg font-semibold tracking-tight text-ink">
+              Create a post
+            </h1>
+            <p className="mt-1 text-sm text-muted">
+              Posts and comments are saved on this device until accounts and the database
+              are added. Markdown is supported.
+            </p>
+          </div>
 
-        <Suspense fallback={<p className="mt-6 text-sm text-muted">Loading…</p>}>
-          <CreatePostForm />
-        </Suspense>
+          <Suspense fallback={<p className="mt-6 text-sm text-muted">Loading…</p>}>
+            <CreatePostForm />
+          </Suspense>
+        </section>
       </div>
 
       <Toaster
