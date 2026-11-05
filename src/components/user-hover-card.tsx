@@ -58,6 +58,12 @@ function loadProfile(username: string): Promise<UserProfile | null> {
   })();
 
   profileCache.set(key, request);
+  void request.then((result) => {
+    if (result === null) {
+      profileCache.delete(key);
+    }
+  });
+
   return request;
 }
 
@@ -253,7 +259,6 @@ export function UserHoverCard({
   const displayName = username.trim();
   const fallbackInitial = (initial ?? displayName.slice(0, 1)).toUpperCase();
   const loading = profile === undefined;
-  const role = profile?.role ?? "member";
 
   return (
     <>
@@ -275,7 +280,8 @@ export function UserHoverCard({
         onBlur={scheduleClose}
         onClick={() => {
           clearOpenTimer();
-          setOpen((current) => !current);
+          clearCloseTimer();
+          setOpen(true);
         }}
         className={className}
       >
@@ -323,12 +329,12 @@ export function UserHoverCard({
               </p>
               {loading ? (
                 <span className="mt-1 block h-3 w-14 animate-pulse rounded bg-surface-muted" />
-              ) : (
+              ) : profile ? (
                 <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[0.65rem] font-semibold capitalize text-muted">
                   <Shield className="size-3" aria-hidden="true" />
-                  {role}
+                  {profile.role}
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
 

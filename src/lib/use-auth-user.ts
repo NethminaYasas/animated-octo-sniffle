@@ -66,7 +66,7 @@ export function useAuthUser() {
             }
 
             setUser((current) => {
-              if (!current) {
+              if (!current || current.id !== authUser.id) {
                 return current;
               }
 

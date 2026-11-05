@@ -96,11 +96,15 @@ export function SiteHeader() {
             }
 
             setUser((current) => {
-              if (!current || current.name === data.username) {
+              if (
+                !current ||
+                current.id !== authUser.id ||
+                current.name === data.username
+              ) {
                 return current;
               }
 
-              return { id: authUser.id, name: data.username };
+              return { ...current, name: data.username };
             });
           });
       };

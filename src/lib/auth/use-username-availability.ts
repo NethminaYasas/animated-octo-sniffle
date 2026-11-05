@@ -12,6 +12,8 @@ export type UsernameAvailabilityStatus =
   | "taken"
   | "unknown";
 
+type CheckedStatus = Exclude<UsernameAvailabilityStatus, "idle" | "checking">;
+
 const CHECK_DELAY_MS = 400;
 
 /**
@@ -22,18 +24,19 @@ export function useUsernameAvailability(
   username: string,
   currentUserId?: string | null,
 ): UsernameAvailabilityStatus {
-  const [status, setStatus] = useState<UsernameAvailabilityStatus>("idle");
+  const [checked, setChecked] = useState<{
+    key: string;
+    status: CheckedStatus;
+  } | null>(null);
+
+  const clean = normaliseUsername(username);
+  const invalid = Boolean(usernameProblem(clean));
+  const key = `${clean}:${currentUserId ?? ""}`;
 
   useEffect(() => {
-    const clean = normaliseUsername(username);
-
-    if (usernameProblem(clean)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- an invalid value has nothing to check
-      setStatus("idle");
+    if (invalid) {
       return;
     }
-
-    setStatus("checking");
 
     let active = true;
     const timer = window.setTimeout(async () => {
@@ -43,18 +46,22 @@ export function useUsernameAvailability(
         return;
       }
 
-      if (available === null) {
-        setStatus("unknown");
-      } else {
-        setStatus(available ? "available" : "taken");
-      }
+      setChecked({
+        key,
+        status:
+          available === null ? "unknown" : available ? "available" : "taken",
+      });
     }, CHECK_DELAY_MS);
 
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [username, currentUserId]);
+  }, [clean, currentUserId, invalid, key]);
 
-  return status;
+  if (invalid) {
+    return "idle";
+  }
+
+  return checked?.key === key ? checked.status : "checking";
 }
