@@ -182,40 +182,6 @@ function GridIcon() {
   );
 }
 
-function ArrowUpIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 20 20"
-    >
-      <path d="m5 12 5-5 5 5" />
-    </svg>
-  );
-}
-
-function ArrowDownIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 20 20"
-    >
-      <path d="m5 8 5 5 5-5" />
-    </svg>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg
@@ -306,92 +272,11 @@ function BoardNav() {
   );
 }
 
-function CommunitySidebar() {
-  return (
-    <aside className="space-y-3">
-      <section className="overflow-hidden rounded border border-gray-200 bg-white">
-        <div className="h-9 bg-orange-700" />
-        <div className="px-3 pb-3">
-          <div className="-mt-5 flex items-end gap-2">
-            <span className="grid size-10 place-items-center rounded-full border-4 border-white bg-orange-700 text-sm font-bold text-white">
-              k
-            </span>
-            <h2 className="pb-1 text-base font-semibold text-[#1a1a1b]">
-              kaluwo
-            </h2>
-          </div>
-          <p className="mt-2 text-xs leading-5 text-gray-600">
-            A Sri Lankan discussion forum in the style of the classic message
-            boards. Built for Sinhala, Tamil and English.
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 border-t border-gray-200 pt-3 text-xs text-gray-500">
-            <p>
-              <span className="font-semibold text-[#1a1a1b]">0</span> members
-            </p>
-            <p>
-              <span className="font-semibold text-[#1a1a1b]">0</span> online
-            </p>
-          </div>
-          <button
-            className="mt-3 w-full rounded-full bg-orange-700 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-            disabled
-            title="Posting arrives in a later step"
-            type="button"
-          >
-            Create post
-          </button>
-        </div>
-      </section>
-
-      <section className="rounded border border-gray-200 bg-white p-3">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-          Languages
-        </h2>
-        <div className="mt-2 space-y-3">
-          <div>
-            <p className="text-[11px] text-gray-500">Sinhala</p>
-            <p
-              className="font-sinhala text-sm leading-7 text-[#1a1a1b]"
-              lang="si"
-            >
-              ආයුබෝවන්! මෙය සිංහල පෙළක්.
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] text-gray-500">Tamil</p>
-            <p
-              className="font-tamil text-sm leading-7 text-[#1a1a1b]"
-              lang="ta"
-            >
-              வணக்கம்! இது ஒரு தமிழ் உரை.
-            </p>
-          </div>
-          <p className="border-t border-gray-200 pt-2 text-[11px] leading-5 text-gray-500">
-            The interface starts in English and will be translated later.
-          </p>
-        </div>
-      </section>
-
-      <section className="rounded border border-gray-200 bg-white p-3">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-          Coming next
-        </h2>
-        <ol className="mt-2 space-y-1.5 text-xs leading-5 text-gray-600">
-          <li>1. Database tables and RLS</li>
-          <li>2. Boards, threads and replies</li>
-          <li>3. Moderation and reports</li>
-          <li>4. Media uploads and search</li>
-        </ol>
-      </section>
-    </aside>
-  );
-}
-
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col">
       <header className="sticky top-0 z-30 border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-3 sm:px-4">
+        <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-3 sm:px-4">
           <Link
             aria-label="kaluwo home"
             className="flex shrink-0 items-center gap-2"
@@ -436,7 +321,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[200px_minmax(0,1fr)_300px]">
+      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[200px_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <BoardNav />
         </div>
@@ -486,46 +371,37 @@ export default function Home() {
             </span>
           </div>
 
-          <article className="mt-3 overflow-hidden rounded border border-gray-200 bg-white">
-            <div className="flex">
-              <div className="hidden w-10 shrink-0 flex-col items-center gap-0.5 border-r border-gray-200 bg-[#fcfcfc] py-3 text-gray-400 sm:flex">
-                <ArrowUpIcon />
-                <span className="text-[11px] font-bold text-[#1a1a1b]">1</span>
-                <ArrowDownIcon />
-              </div>
-              <div className="min-w-0 flex-1 p-3 sm:p-4">
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-gray-500">
-                  <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-[10px] font-bold text-white">
-                    k
-                  </span>
-                  <span className="font-semibold text-[#1a1a1b]">
-                    Announcements
-                  </span>
-                  <span>•</span>
-                  <span>Posted by kaluwo</span>
-                  <span>•</span>
-                  <span>just now</span>
-                  <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-800">
-                    Preview
-                  </span>
-                </div>
-                <h2 className="mt-2 text-lg font-semibold leading-6 text-[#1a1a1b]">
-                  Welcome to kaluwo
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-700">
-                  A Sri Lankan discussion forum for boards, threads and
-                  replies. This is a static preview of a post — real posting,
-                  voting and comments come in later steps.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <CommentIcon />
-                    0 comments
-                  </span>
-                  <span>Share</span>
-                  <span>Save</span>
-                </div>
-              </div>
+          <article className="mt-3 rounded border border-gray-200 bg-white p-3 sm:p-4">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-gray-500">
+              <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-[10px] font-bold text-white">
+                k
+              </span>
+              <span className="font-semibold text-[#1a1a1b]">
+                Announcements
+              </span>
+              <span>•</span>
+              <span>Posted by kaluwo</span>
+              <span>•</span>
+              <span>just now</span>
+              <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-800">
+                Preview
+              </span>
+            </div>
+            <h2 className="mt-2 text-lg font-semibold leading-6 text-[#1a1a1b]">
+              Welcome to kaluwo
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-700">
+              A Sri Lankan discussion forum for boards, threads and replies.
+              This is a static preview of a post — real posting and comments
+              come in later steps.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-gray-500">
+              <span className="flex items-center gap-1">
+                <CommentIcon />
+                0 comments
+              </span>
+              <span>Share</span>
+              <span>Save</span>
             </div>
           </article>
 
@@ -538,13 +414,40 @@ export default function Home() {
               up here.
             </p>
           </div>
-        </section>
 
-        <CommunitySidebar />
+          <section className="mt-3 rounded border border-gray-200 bg-white p-3 sm:p-4">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              Languages
+            </h2>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-[11px] text-gray-500">Sinhala</p>
+                <p
+                  className="font-sinhala text-sm leading-7 text-[#1a1a1b]"
+                  lang="si"
+                >
+                  ආයුබෝවන්! මෙය සිංහල පෙළක්.
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-500">Tamil</p>
+                <p
+                  className="font-tamil text-sm leading-7 text-[#1a1a1b]"
+                  lang="ta"
+                >
+                  வணக்கம்! இது ஒரு தமிழ் உரை.
+                </p>
+              </div>
+            </div>
+            <p className="mt-2 border-t border-gray-200 pt-2 text-[11px] leading-5 text-gray-500">
+              The interface starts in English and will be translated later.
+            </p>
+          </section>
+        </section>
       </div>
 
       <footer className="mt-4 border-t border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-[11px] text-gray-500">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-[11px] text-gray-500">
           <p>kaluwo — a Sri Lankan discussion forum.</p>
           <p>Foundation preview · Built with Next.js and Supabase.</p>
         </div>

@@ -10,8 +10,12 @@ database tables, authentication and all other features are still to be built.
 ## 1. What kaluwo is
 
 A classic forum: boards > threads > posts. Members register, start threads,
-reply, quote, mention others, react, and report bad content. Moderators and
-admins keep it clean. Posts can include images, videos and audio.
+reply, quote, mention others, react to comments, and report bad content.
+Moderators and admins keep it clean. Posts can include images, videos and
+audio.
+
+There are no upvotes or downvotes on threads or posts. Only comments
+(replies) can be reacted to.
 
 The community is Sri Lankan, so Sinhala, Tamil and English must all work:
 UTF-8 everywhere, suitable fonts, and an i18n-ready UI starting in English.
@@ -45,19 +49,21 @@ configurable.
 1. **Auth** — sign up, log in, log out, email verification, password reset,
    profile page
 2. **Database tables + Row Level Security** — profiles, boards, threads,
-   posts, reports, media_assets
+   posts, reactions, reports, media_assets
 3. **Read-only forum** — board list, thread list and thread page, with
    pagination (20 to 50 posts per page)
 4. **Posting** — create thread and reply, quote, soft-delete
-5. **Editing** — edit and delete own posts, keeping edit history
-6. **Moderation roles** — moderators can lock, pin, move and delete threads;
+5. **Reactions** — like, laugh and wow (positive); anger and dislike
+   (negative), on comments only
+6. **Editing** — edit and delete own posts, keeping edit history
+7. **Moderation roles** — moderators can lock, pin, move and delete threads;
    delete posts; and ban users
-7. **Reports** — reports and moderator queue
-8. **Spam protection** — Turnstile, rate limits, new-user restrictions
-9. **Media uploads** — see section 6
-10. **Discovery** — search (Postgres full-text first), notifications,
+8. **Reports** — reports and moderator queue
+9. **Spam protection** — Turnstile, rate limits, new-user restrictions
+10. **Media uploads** — see section 6
+11. **Discovery** — search (Postgres full-text first), notifications,
     mentions
-11. **Later** — private messages, reputation and ranks, classifieds board
+12. **Later** — private messages, reputation and ranks, classifieds board
 
 ## 5. Data model
 
@@ -100,6 +106,23 @@ The SQL is written in step 2. Planned tables:
 - `created_at`
 - `edited_at`
 - `is_deleted`
+
+A comment is a reply post. Reactions attach only to comments; threads and
+opening posts have no score.
+
+### `reactions`
+
+- `id`
+- `post_id` — the comment being reacted to
+- `user_id`
+- `kind` — `like` / `laugh` / `wow` / `anger` / `dislike`
+- `created_at`
+
+`like`, `laugh` and `wow` count as positive; `anger` and `dislike` count as
+negative. Reaction totals roll up to the comment author and can later feed
+into reputation. **Unresolved:** whether a user may add several different
+reactions to the same comment, or exactly one changeable reaction. The unique
+constraint will follow that decision.
 
 ### `reports`
 
@@ -209,9 +232,14 @@ Apply these to every task.
   time (verified with a production build and values supplied only at startup).
   Client Components that call Supabase will need the `NEXT_PUBLIC_*` values
   available when the app is built, which is a later deployment concern.
-- The home page uses a Reddit-style forum shell: top bar, board navigation,
-  thread feed, and community sidebar. Non-functional controls are visibly
-  disabled rather than pretending to work before their step is built.
+- The home page uses a Reddit-style forum shell: top bar, board navigation
+  and a central thread feed. There is no right sidebar. Non-functional
+  controls are visibly disabled rather than pretending to work before their
+  step is built.
+- Threads and posts have no upvote/downvote controls. Reactions belong to
+  comments (replies) only.
+- The Next.js development indicator is disabled in `next.config.ts` so it
+  does not cover the bottom-left of the page during development.
 - The Supabase status is streamed behind a `Suspense` boundary, so the forum
   shell paints immediately even if the project check is slow or unreachable.
 - The connection check is bounded by a 3-second timeout and returns a visible
