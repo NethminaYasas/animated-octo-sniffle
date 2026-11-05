@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import { getSupabaseConfig } from "./config";
+import type { Database } from "./types";
 
 /**
  * Creates a Supabase client for Server Components, Server Actions and Route
@@ -19,7 +20,7 @@ export async function createClient() {
 
   const cookieStore = await cookies();
 
-  return createServerClient(config.url, config.anonKey, {
+  return createServerClient<Database>(config.url, config.anonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -30,8 +31,8 @@ export async function createClient() {
             cookieStore.set(name, value, options);
           });
         } catch {
-          // Server Components cannot write cookies. The session-refresh
-          // proxy added with authentication will handle this.
+          // Server Components cannot write cookies. The root proxy refreshes
+          // the session before the request reaches them.
         }
       },
     },

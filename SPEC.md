@@ -4,10 +4,11 @@ kaluwo is a Sri Lankan discussion forum in the style of
 [elakiri.com](https://elakiri.com). The repo is public: no real secrets, IPs,
 keys or personal data may be committed.
 
-**Current status:** Step 1 (project initialization) is complete. The step 2
-schema and RLS policies are written in
-`supabase/migrations/20261105000000_initial_schema.sql` and still have to be
-applied to the Supabase project. Authentication is the next feature to build.
+**Current status:** Step 1 (project initialization) is complete. The database
+schema, RLS policies and authentication are built in the repository. The
+migrations in `supabase/migrations/` still have to be applied to the Supabase
+project. Posting to the database, moderation, uploads and the live forum are
+still to be built.
 
 ## 1. What kaluwo is
 
@@ -78,6 +79,8 @@ The SQL lives in `supabase/migrations/`. Tables:
 - `avatar_url`
 - `role` — `member` / `moderator` / `admin`
 - `is_banned`
+- `reaction_score` — positive reactions minus negative reactions received on
+  the member's comments
 - `created_at`
 
 ### `boards`
@@ -105,7 +108,8 @@ The SQL lives in `supabase/migrations/`. Tables:
 - `thread_id`
 - `author_id`
 - `content`
-- `reply_to_post_id`
+- `reply_to_post_id` — the post being replied to; its author is the member
+  being replied to
 - `is_opening` — true for the thread's first post; reactions are not allowed
   on it
 - `created_at`
@@ -124,9 +128,10 @@ opening posts have no score.
 - `created_at`
 
 `like`, `laugh` and `wow` count as positive; `anger` and `dislike` count as
-negative. Reaction totals roll up to the comment author and can later feed
-into reputation. A user has exactly one reaction per comment; choosing a
-different reaction updates the existing row (`unique (post_id, user_id)`).
+negative. Reaction totals roll up to the comment author's
+`profiles.reaction_score`; opening posts and soft-deleted comments are
+excluded. A user has exactly one reaction per comment; choosing a different
+reaction updates the existing row (`unique (post_id, user_id)`).
 
 ### `reports`
 
@@ -299,3 +304,41 @@ Apply these to every task.
 - `src/lib/supabase/types.ts` is generated from the schema and committed so
   the app type-checks without a Supabase login. Regenerate it after schema
   changes with the command in `supabase/README.md`.
+
+## Implementation decisions (authentication)
+
+- Login is **username + password**. Email is collected at sign-up only for
+  verification and password reset.
+- Supabase Auth signs in with an email, so a server action calls the
+  service-role-only `resolve_login_email(username)` function and then signs in
+  as the returned address. `SUPABASE_SERVICE_ROLE_KEY` stays on the server and
+  is never exposed to the browser. Unknown usernames use a dummy email so the
+  error does not reveal whether an account exists.
+- Turnstile is verified server-side in `src/lib/auth/turnstile.ts` with
+  `TURNSTILE_SECRET_KEY`. Supabase's built-in CAPTCHA is intentionally left
+  off: login runs in a server action, and a server-side check avoids Cloudflare
+  rejecting the token because the request IP changed.
+- Turnstile is required on login, sign-up and password-reset requests. The
+  final password update is gated by the session created from the email link.
+- Next.js development server-action argument logging is disabled in
+  `next.config.ts` (`logging.serverFunctions: false`) so passwords and CAPTCHA
+  tokens do not appear in terminal logs.
+- `src/proxy.ts` refreshes the Supabase session on every request (Next 16
+  renamed middleware to proxy). `/profile` is a server-rendered page and
+  redirects to `/login?next=/profile` when there is no session.
+- Email confirmation uses `/auth/callback` (code exchange). `/auth/confirm`
+  supports `token_hash` email templates so links also work when opened in a
+  different browser.
+- The profile page shows username, email, role, status, joined date and
+  reaction score.
+- `profiles.reaction_score` is maintained by recompute triggers on reactions
+  and on relevant post changes (soft-delete, restore, author change, hard
+  delete). It is not part of the authenticated column update grant, so members
+  cannot write it directly.
+- Replies use `posts.reply_to_post_id`; the target post's author is the member
+  being replied to. The validation trigger requires an active target in the
+  same thread and rejects self-replies. `posts_reply_to_idx` supports reply
+  lookups. The database-backed reply UI lands with the posting step.
+- The auth and score flow was checked against PostgreSQL 17 with a stubbed
+  `auth` schema: score changes, soft-delete/restore, cross-thread replies,
+  self-replies, column grants and the service-role-only lookup all passed.

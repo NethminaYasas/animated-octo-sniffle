@@ -151,6 +151,7 @@ export type Database = {
           created_at: string;
           id: string;
           is_banned: boolean;
+          reaction_score: number;
           role: Database["public"]["Enums"]["user_role"];
           username: string;
         };
@@ -160,6 +161,7 @@ export type Database = {
           created_at?: string;
           id: string;
           is_banned?: boolean;
+          reaction_score?: number;
           role?: Database["public"]["Enums"]["user_role"];
           username: string;
         };
@@ -168,6 +170,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           is_banned?: boolean;
+          reaction_score?: number;
           role?: Database["public"]["Enums"]["user_role"];
           username?: string;
         };
@@ -316,6 +319,8 @@ export type Database = {
       is_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_banned: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_moderator: { Args: Record<PropertyKey, never>; Returns: boolean };
+      recompute_reaction_score: { Args: { target_profile: string }; Returns: undefined };
+      resolve_login_email: { Args: { lookup_username: string }; Returns: string };
     };
     Enums: {
       media_kind: "image" | "video" | "audio";

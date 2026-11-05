@@ -4,11 +4,12 @@ kaluwo is a Sri Lankan discussion forum in the style of
 [elakiri.com](https://elakiri.com): boards, threads and posts, built for a
 community that speaks Sinhala, Tamil and English.
 
-This repository is currently at **step 2: database schema**. The schema and
-its Row Level Security policies live in `supabase/migrations/` and must be
-applied to your Supabase project (see
-[supabase/README.md](./supabase/README.md)). Authentication, moderation,
-uploads and the live forum are still to be built.
+This repository now has the database schema and the authentication flow:
+username/password login, email verification, password reset and Cloudflare
+Turnstile. The schema and its Row Level Security policies live in
+`supabase/migrations/` and must be applied to your Supabase project (see
+[supabase/README.md](./supabase/README.md)). Moderation, uploads and the
+database-backed posting/reply UI are still to be built.
 
 ## Tech stack
 
@@ -69,14 +70,43 @@ are for later steps. Leave them alone for now.
 
 ### 4. Apply the database schema
 
-Follow [supabase/README.md](./supabase/README.md). At minimum, paste
-`supabase/migrations/20261105000000_initial_schema.sql` into the Supabase SQL
-Editor and run it once. It creates the tables, RLS policies and the board rows.
+Follow [supabase/README.md](./supabase/README.md). Run every file in
+`supabase/migrations/` in filename order in the Supabase SQL Editor. They
+create the tables, RLS policies, the username-login helper, reaction scores
+and the reply rules.
 
 The generated TypeScript types are already committed at
 `src/lib/supabase/types.ts`. Regenerate them only after a schema change.
 
-### 5. Start the development server
+### 5. Configure authentication and CAPTCHA
+
+1. Copy the **service role** key from Supabase **Project Settings -> API** into
+   `.env.local` as `SUPABASE_SERVICE_ROLE_KEY`. It is used only on the server
+   to map a username to its email during login. Never expose it to the browser.
+2. Create a Cloudflare Turnstile widget at
+   [dash.cloudflare.com](https://dash.cloudflare.com/?to=/:account/turnstile)
+   and add `localhost` and your production domain to its hostnames.
+3. Put the Turnstile **site key** in `.env.local` as
+   `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and the **secret key** as
+   `TURNSTILE_SECRET_KEY`. The app verifies the token on the server for login,
+   sign-up and password-reset requests.
+4. Leave Supabase's built-in CAPTCHA **off**. The app verifies Turnstile
+   itself, which avoids the request-IP problem with server-side username login.
+5. Confirm that **Authentication -> URL Configuration** includes
+   `http://localhost:3000/auth/callback` (and the production equivalent).
+6. Keep **Confirm email** on. Email is only used for verification and password
+   reset; members log in with a username and password.
+
+For local development, Cloudflare's always-pass test keys are:
+
+```dotenv
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+```
+
+Replace both with the real widget keys before deploying.
+
+### 6. Start the development server
 
 ```bash
 npm run dev
@@ -107,19 +137,30 @@ If you change `.env.local`, stop and restart the dev server.
 ```text
 src/
   app/
+    auth/             Email confirmation, callback and error routes
+    create/           Local post composer (database posting is a later step)
+    forgot-password/  Reset request page and server action
+    login/            Username login page and server action
+    profile/          Server-rendered member profile with reaction score
+    reset-password/   New-password page after the email link
+    signup/           Registration page and server action
     globals.css       Tailwind styles and light/dark colour tokens
     layout.tsx        Root layout, metadata, fonts and theme bootstrap
     page.tsx          Home page, forum shell and Supabase status banner
-  components/         Header, board navigation, markdown editor and preview
+  components/         Header, auth shell, Turnstile widget, markdown tools
   lib/
+    auth/             Auth errors, redirects, Turnstile, validation
     supabase/
+      admin.ts        Service-role client (server only)
       client.ts       Supabase client for Client Components
       config.ts       Reads and validates the public env vars
+      proxy.ts        Refreshes the session on every request
       server.ts       Cookie-aware Supabase client for the server
       status.ts       Small read-only connection check for the home page
       types.ts        Generated database types
+  proxy.ts            Next.js 16 proxy entry point
 supabase/
-  migrations/         SQL schema and RLS policies
+  migrations/         SQL schema, RLS, username login, scores and replies
   README.md           How to apply the schema and configure Auth URLs
 ```
 

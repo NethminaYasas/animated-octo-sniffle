@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Auth server actions receive passwords and CAPTCHA tokens. Keep them out
+  // of the development terminal logs.
+  logging: {
+    serverFunctions: false,
+  },
   cacheComponents: true,
   partialPrefetching: true,
   devIndicators: false,
