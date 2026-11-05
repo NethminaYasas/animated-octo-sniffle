@@ -573,6 +573,7 @@ export function MarkdownEditor({
             aria-label={ariaLabel}
             contentEditable
             suppressContentEditableWarning
+            suppressHydrationWarning
             data-placeholder={placeholder}
             onInput={syncValue}
             onKeyDown={handleKeyDown}
