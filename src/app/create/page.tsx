@@ -1,14 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import {
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, Check, Send } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -155,21 +149,17 @@ function BoardPicker({
 
 function CreatePostForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialBoard = searchParams.get("board");
 
-  const [boardId, setBoardId] = useState(() => validBoardId(initialBoard));
+  const [boardId, setBoardId] = useState("general");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setBoardId(validBoardId(params.get("board")));
     titleRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    setBoardId(validBoardId(searchParams.get("board")));
-  }, [searchParams]);
 
   const board = BOARDS.find((candidate) => candidate.id === boardId) ?? BOARDS[0];
 
@@ -286,7 +276,7 @@ export default function CreatePostPage() {
     <main className="flex flex-1 flex-col">
       <SiteHeader />
 
-      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[200px_minmax(0,1fr)]">
+      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <BoardNav activeBoard={undefined} onBoardChange={handleBoardNavSelect} />
         </div>
@@ -303,9 +293,7 @@ export default function CreatePostPage() {
             </p>
           </div>
 
-          <Suspense fallback={<p className="mt-6 text-sm text-muted">Loading…</p>}>
-            <CreatePostForm />
-          </Suspense>
+          <CreatePostForm />
         </section>
       </div>
 

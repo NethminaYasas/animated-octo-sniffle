@@ -1,6 +1,15 @@
 "use client";
 
-import { useState, useRef, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   Bold,
   Italic,
@@ -10,8 +19,6 @@ import {
   TextQuote,
   List,
   ListOrdered,
-  Heading1,
-  Heading2,
   Minus,
   PenLine,
   Eye,
@@ -20,6 +27,15 @@ import {
 } from "lucide-react";
 
 import { MarkdownContent } from "@/components/markdown-content";
+
+const EDITOR_FONT_SIZES = {
+  sm: "0.9rem",
+  md: "1rem",
+  lg: "1.125rem",
+  xl: "1.25rem",
+} as const;
+
+type EditorFontSize = keyof typeof EDITOR_FONT_SIZES;
 
 export type MarkdownEditorProps = {
   id?: string;
@@ -48,7 +64,7 @@ function ToolbarButton({
       title={label}
       onMouseDown={(event: MouseEvent) => event.preventDefault()}
       onClick={onClick}
-      className="grid size-7 place-items-center rounded text-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-orange-600"
+      className="grid size-8 place-items-center rounded text-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-orange-600"
     >
       {children}
     </button>
@@ -73,10 +89,40 @@ export function MarkdownEditor({
     }
   };
   const [mode, setMode] = useState<"write" | "preview">("write");
+  const [fontSize, setFontSize] = useState<EditorFontSize>("md");
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const linkSelectionRef = useRef<{ start: number; end: number } | null>(null);
+  const fontSizeId = id ? `${id}-font-size` : "markdown-font-size";
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("editor-font-size");
+
+      if (
+        saved === "sm" ||
+        saved === "md" ||
+        saved === "lg" ||
+        saved === "xl"
+      ) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the saved editor preference after mount
+        setFontSize(saved);
+      }
+    } catch {
+      // Use the default when storage is unavailable.
+    }
+  }, []);
+
+  const changeFontSize = (value: EditorFontSize) => {
+    setFontSize(value);
+
+    try {
+      localStorage.setItem("editor-font-size", value);
+    } catch {
+      // Ignore storage errors; the size still applies for this visit.
+    }
+  };
 
   const restoreSelection = (start: number, end: number) => {
     const el = textareaRef.current;
@@ -269,7 +315,7 @@ export function MarkdownEditor({
   };
 
   return (
-    <div className="overflow-hidden rounded border border-line bg-surface">
+    <div className="overflow-hidden rounded-lg border border-line bg-surface">
       <div
         role="tablist"
         aria-label="Markdown editor mode"
@@ -280,13 +326,13 @@ export function MarkdownEditor({
           role="tab"
           aria-selected={mode === "write"}
           onClick={() => setMode("write")}
-          className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+          className={`flex items-center gap-1.5 rounded px-3 py-2 text-sm font-semibold transition-colors ${
             mode === "write"
               ? "bg-surface text-ink shadow-sm"
               : "text-muted hover:text-ink"
           }`}
         >
-          <PenLine className="size-3.5" />
+          <PenLine className="size-4" />
           Write
         </button>
         <button
@@ -294,20 +340,26 @@ export function MarkdownEditor({
           role="tab"
           aria-selected={mode === "preview"}
           onClick={() => setMode("preview")}
-          className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+          className={`flex items-center gap-1.5 rounded px-3 py-2 text-sm font-semibold transition-colors ${
             mode === "preview"
               ? "bg-surface text-ink shadow-sm"
               : "text-muted hover:text-ink"
           }`}
         >
-          <Eye className="size-3.5" />
+          <Eye className="size-4" />
           Preview
         </button>
       </div>
 
-      {mode === "write" ? (
-        <div role="tabpanel" aria-label="Markdown editor">
-          <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-1.5 py-1">
+      <div>
+        <div
+          className={`min-w-0 ${mode === "write" ? "block" : "hidden"}`}
+          role="tabpanel"
+          aria-label="Markdown editor"
+        >
+          <div
+            className="flex flex-wrap items-center gap-0.5 border-b border-line px-1.5 py-1"
+          >
             <ToolbarButton label="Bold (Ctrl+B)" onClick={() => toggleInline("**", "**", "bold text")}>
               <Bold className="size-4" />
             </ToolbarButton>
@@ -323,17 +375,30 @@ export function MarkdownEditor({
             <ToolbarButton label="Link (Ctrl+K)" onClick={openLinkPanel}>
               <Link2 className="size-4" />
             </ToolbarButton>
-            <span aria-hidden="true" className="mx-1 h-4 w-px bg-line" />
-            <ToolbarButton label="Heading 1" onClick={() => toggleLinePrefix("# ")}>
-              <Heading1 className="size-4" />
-            </ToolbarButton>
-            <ToolbarButton label="Heading 2" onClick={() => toggleLinePrefix("## ")}>
-              <Heading2 className="size-4" />
-            </ToolbarButton>
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
+            <label className="sr-only" htmlFor={fontSizeId}>
+              Editor font size
+            </label>
+            <select
+              id={fontSizeId}
+              aria-label="Editor font size"
+              title="Editor font size"
+              value={fontSize}
+              onChange={(event) =>
+                changeFontSize(event.target.value as EditorFontSize)
+              }
+              className="h-8 rounded border border-line bg-surface px-1.5 text-xs font-semibold text-muted focus:outline-none focus:ring-2 focus:ring-orange-700"
+            >
+              <option value="sm">Small</option>
+              <option value="md">Medium</option>
+              <option value="lg">Large</option>
+              <option value="xl">X-Large</option>
+            </select>
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
             <ToolbarButton label="Quote" onClick={() => toggleLinePrefix("> ")}>
               <TextQuote className="size-4" />
             </ToolbarButton>
-            <span aria-hidden="true" className="mx-1 h-4 w-px bg-line" />
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
             <ToolbarButton label="Bulleted list" onClick={() => toggleLinePrefix("- ")}>
               <List className="size-4" />
             </ToolbarButton>
@@ -354,7 +419,7 @@ export function MarkdownEditor({
                 value={linkLabel}
                 onChange={(event) => setLinkLabel(event.target.value)}
                 onKeyDown={handleLinkKeyDown}
-                className="h-8 min-w-0 flex-1 rounded border border-line bg-surface px-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-orange-700"
+                className="h-9 min-w-0 flex-1 rounded border border-line bg-surface px-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-orange-700"
               />
               <input
                 type="text"
@@ -364,14 +429,14 @@ export function MarkdownEditor({
                 onChange={(event) => setLinkUrl(event.target.value)}
                 onKeyDown={handleLinkKeyDown}
                 autoFocus
-                className="h-8 min-w-0 flex-1 rounded border border-line bg-surface px-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-orange-700"
+                className="h-9 min-w-0 flex-1 rounded border border-line bg-surface px-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-orange-700"
               />
               <button
                 type="button"
                 aria-label="Insert link"
                 title="Insert link"
                 onClick={applyLink}
-                className="grid size-8 place-items-center rounded bg-orange-700 text-white hover:bg-orange-800"
+                className="grid size-9 place-items-center rounded bg-orange-700 text-white hover:bg-orange-800"
               >
                 <Check className="size-4" />
               </button>
@@ -380,7 +445,7 @@ export function MarkdownEditor({
                 aria-label="Cancel link"
                 title="Cancel"
                 onClick={closeLinkPanel}
-                className="grid size-8 place-items-center rounded border border-line text-muted hover:bg-surface-muted hover:text-ink"
+                className="grid size-9 place-items-center rounded border border-line text-muted hover:bg-surface-muted hover:text-ink"
               >
                 <X className="size-4" />
               </button>
@@ -397,24 +462,44 @@ export function MarkdownEditor({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             spellCheck={false}
-            className="block w-full resize-y bg-surface px-3 py-2 font-mono text-[13px] leading-6 text-ink placeholder:text-faint focus:outline-none"
+            style={{ fontSize: EDITOR_FONT_SIZES[fontSize] }}
+            className="block w-full resize-y bg-surface px-3 py-3 font-mono leading-relaxed text-ink placeholder:text-faint focus:outline-none"
           />
-          <div className="flex items-center justify-between border-t border-line px-3 py-1.5 text-[10px] text-faint">
-            <span>Markdown supported</span>
-            <span aria-live="polite">{value.length.toLocaleString()} characters</span>
+          <div className="flex items-center justify-between border-t border-line px-3 py-2 text-xs text-faint">
+            <span>Markdown supported · paste a supported link on its own line to embed it</span>
+            <span aria-live="polite">
+              {value.length.toLocaleString()} characters
+            </span>
           </div>
         </div>
-      ) : (
-        <div role="tabpanel" aria-label="Markdown preview" className="px-3 py-2">
-          {value.trim() === "" ? (
-            <p className="py-8 text-center text-sm text-faint">
-              Nothing to preview yet. Start writing in the Write tab.
-            </p>
-          ) : (
-            <MarkdownContent>{value}</MarkdownContent>
-          )}
+
+        <div
+          className={`min-w-0 ${mode === "preview" ? "block" : "hidden"}`}
+          role="tabpanel"
+          aria-label="Markdown preview"
+        >
+          <div className="flex items-center gap-1.5 border-b border-line bg-surface-muted px-3 py-2 text-xs font-semibold text-muted">
+            <Eye className="size-4" />
+            Live preview
+          </div>
+          <div
+            className="max-h-[34rem] min-h-[14rem] overflow-y-auto px-3 py-3"
+            style={
+              {
+                "--markdown-font-size": EDITOR_FONT_SIZES[fontSize],
+              } as CSSProperties
+            }
+          >
+            {value.trim() === "" ? (
+              <p className="py-10 text-center text-sm text-faint">
+                Nothing to preview yet. Start writing in the Write tab.
+              </p>
+            ) : (
+              <MarkdownContent>{value}</MarkdownContent>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

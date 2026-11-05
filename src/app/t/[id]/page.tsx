@@ -39,7 +39,7 @@ function ForumLayout({
     <main className="flex flex-1 flex-col">
       <SiteHeader />
 
-      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[200px_minmax(0,1fr)]">
+      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <BoardNav activeBoard={activeBoard} onBoardChange={handleBoardNavSelect} />
         </div>

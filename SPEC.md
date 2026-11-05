@@ -335,3 +335,26 @@ Apply these to every task.
 - The auth and score flow was checked against PostgreSQL 17 with a stubbed
   `auth` schema: score changes, soft-delete/restore, cross-thread replies,
   self-replies, column grants and the service-role-only lookup all passed.
+
+## Implementation decisions (editor and embeds)
+
+- The Markdown editor uses Write/Preview tabs, one pane at a time, on every
+  screen. The preview uses the same `MarkdownContent` renderer as posts and
+  comments.
+- The toolbar no longer has heading buttons. An Editor font size selector
+  (Small / Medium / Large / X-Large) changes the textarea and preview font
+  size, persists in `localStorage`, and applies to both posts and comments.
+- The site baseline font size is 19px; `.markdown-body` is 1rem with a 1.7 line
+  height so posts and comments are comfortable to read.
+- Embeds are limited to a whitelist: YouTube (privacy-enhanced nocookie),
+  Vimeo, Reddit, Facebook posts/videos, X posts, Instagram, TikTok and Spotify.
+- A supported URL is embedded only when it is alone in a paragraph. A URL in a
+  sentence remains a normal link.
+- Embed iframe URLs are rebuilt from validated hosts and IDs; raw user URLs are
+  never used as iframe sources. Raw HTML stays disabled via `skipHtml`.
+- Embeds are lazy-loaded, include an "Open original" link, and render in posts,
+  comments and the editor preview.
+- When a Content Security Policy is added, allow `frame-src` for
+  `youtube-nocookie.com`, `player.vimeo.com`, `redditmedia.com`,
+  `facebook.com`, `platform.twitter.com`, `instagram.com`, `tiktok.com` and
+  `open.spotify.com`.

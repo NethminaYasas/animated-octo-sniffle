@@ -103,7 +103,7 @@ export function SiteHeader() {
           <div className="flex h-9 w-full max-w-lg items-center gap-2 rounded-full border border-line bg-surface-muted px-3 text-sm text-muted">
             <Search className="size-4 shrink-0" />
             <span className="truncate">Search kaluwo</span>
-            <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wide text-faint">
+            <span className="ml-auto shrink-0 text-[0.65rem] font-semibold uppercase tracking-wide text-faint">
               Soon
             </span>
           </div>
@@ -125,7 +125,9 @@ export function SiteHeader() {
                 title={`@${user.name}`}
               >
                 <UserRound className="size-3.5" />
-                <span className="max-w-24 truncate">@{user.name}</span>
+                <span className="hidden max-w-24 truncate sm:inline">
+                  @{user.name}
+                </span>
               </Link>
               <LogoutButton compact />
             </>

@@ -122,6 +122,24 @@ remembers your choice in the browser.
 
 If you change `.env.local`, stop and restart the dev server.
 
+## Writing posts and comments
+
+- The Markdown editor has **Write / Preview** tabs. Preview renders the same
+  Markdown (and embeds) as posts and comments.
+- The toolbar supports bold, italic, strikethrough, inline code, links,
+  quotes, lists and horizontal rules.
+- The **Editor font size** selector (Small, Medium, Large, X-Large) changes the
+  writing font and the preview. It is saved in the browser and applies to both
+  posts and comments.
+- Paste a supported link **on its own line** to embed it: YouTube, Vimeo,
+  Reddit, Facebook, X/Twitter, Instagram, TikTok or Spotify. A link inside a
+  sentence stays a normal link.
+- Embeds load lazily, use only whitelisted providers, and always include an
+  "Open original" link.
+
+The site baseline is 19px so the forum is comfortable to read on a desktop;
+the editor has its own size control for writing.
+
 ## Available scripts
 
 | Command | What it does |
@@ -146,7 +164,7 @@ src/
     globals.css       Tailwind styles and light/dark colour tokens
     layout.tsx        Root layout, metadata, fonts and theme bootstrap
     page.tsx          Home page and forum shell
-  components/         Header, auth shell, Turnstile widget, markdown tools
+  components/         Header, auth shell, Turnstile, markdown editor, embeds
   lib/
     auth/             Auth errors, redirects, Turnstile, validation
     supabase/

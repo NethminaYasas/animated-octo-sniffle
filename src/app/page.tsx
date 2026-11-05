@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, Suspense } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import { Plus, MessageSquare } from "lucide-react";
 import { Toaster } from "sonner";
 
@@ -48,8 +48,8 @@ function SortTabs({ activeSort, onSortChange }: { activeSort: SortOption; onSort
 function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
   return (
     <article className="mt-3 rounded border border-line bg-surface p-3 sm:p-4 hover:border-orange-700/30 dark:hover:border-orange-500/30 transition-colors">
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted">
-        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-[10px] font-bold text-white">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-[0.65rem] font-bold text-white">
           {post.boardInitial}
         </span>
         <span className="font-semibold text-ink">{post.boardName}</span>
@@ -58,7 +58,7 @@ function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
         <span>•</span>
         <span suppressHydrationWarning>{now ? formatRelativeTime(post.createdAt, now) : "just now"}</span>
         {post.isPreview && (
-          <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-800 dark:bg-orange-950/60 dark:text-orange-300">
+          <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-orange-800 dark:bg-orange-950/60 dark:text-orange-300">
             Preview
           </span>
         )}
@@ -73,7 +73,7 @@ function PostCard({ post, now }: { post: SavedPost; now: Date | null }) {
           <MarkdownContent>{post.content}</MarkdownContent>
         </div>
       ) : null}
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-muted">
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold text-muted">
         <Link href={`/t/${post.id}`} className="flex items-center gap-1 transition-colors hover:text-ink dark:hover:text-ink">
           <MessageSquare className="size-3.5" />
           {post.commentCount} comments
@@ -143,29 +143,31 @@ function PostList({
 }
 
 export default function Home() {
-  return (
-    <Suspense
-      fallback={
-        <main className="flex flex-1 flex-col items-center justify-center px-4 text-center text-sm text-muted">
-          <p>Loading…</p>
-        </main>
-      }
-    >
-      <HomeContent />
-    </Suspense>
-  );
+  return <HomeContent />;
 }
 
 function HomeContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const boardParam = searchParams.get("board");
-  const activeBoard = BOARDS.some((board) => board.id === boardParam)
-    ? boardParam
-    : null;
+  const [activeBoard, setActiveBoardState] = useState<string | null>(null);
   const setActiveBoard = (boardId: string | null) => {
+    setActiveBoardState(boardId);
     router.push(boardId ? `/?board=${encodeURIComponent(boardId)}` : "/");
   };
+
+  useEffect(() => {
+    const syncBoard = () => {
+      const params = new URLSearchParams(window.location.search);
+      const board = params.get("board");
+      setActiveBoardState(
+        BOARDS.some((candidate) => candidate.id === board) ? board : null,
+      );
+    };
+
+    syncBoard();
+    window.addEventListener("popstate", syncBoard);
+
+    return () => window.removeEventListener("popstate", syncBoard);
+  }, []);
 
   const [activeSort, setActiveSort] = useState<SortOption>("new");
   const [createdPosts, setCreatedPosts] = useState<SavedPost[]>([]);
@@ -206,7 +208,7 @@ function HomeContent() {
     <main className="flex flex-1 flex-col">
       <SiteHeader />
 
-      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[200px_minmax(0,1fr)]">
+      <div className="mx-auto grid w-full max-w-5xl flex-1 grid-cols-1 gap-6 px-3 py-3 sm:px-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <div className="hidden lg:block">
           <BoardNav activeBoard={activeBoard} onBoardChange={setActiveBoard} />
         </div>
