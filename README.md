@@ -204,6 +204,10 @@ supabase/
   [supabase/README.md](./supabase/README.md#5-create-invite-codes).
 - **Google login is not configured** — enable the Google provider in Supabase
   and add the callback URL to both Supabase and Google Cloud.
+- **Usernames:** usernames can be English, Sinhala or Tamil. They are
+  lowercase, NFC-normalised, 3-20 characters, and limited to letters/marks,
+  digits, underscore and ZWNJ/ZWJ. Other scripts are rejected to reduce
+  lookalike-script impersonation.
 - **Email link says it is invalid or expired** — check the Supabase Site URL
   and redirect URLs, or switch the password-reset template to the
   `/auth/confirm` `token_hash` link (see

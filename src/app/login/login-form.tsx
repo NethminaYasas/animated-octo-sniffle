@@ -101,10 +101,10 @@ export function LoginForm() {
           id="login-username"
           maxLength={20}
           onChange={(event) => setUsername(event.target.value)}
-          pattern="[A-Za-z0-9_]{3,20}"
+          pattern="[A-Za-z0-9_\u0B80-\u0BFF\u0D80-\u0DFF\u200C\u200D]{3,20}"
           placeholder="your_name"
           required
-          title="3-20 letters, numbers or underscores"
+          title="3-20 English, Sinhala or Tamil letters, numbers or underscores"
           type="text"
           value={username}
         />

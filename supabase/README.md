@@ -16,6 +16,8 @@ Run every file in `migrations/` in filename order:
 5. `20261105040000_google_auth_and_invites.sql` — `profiles.onboarding_completed`,
    single-use `invite_codes`, and the service-role-only
    `consume_invite_code()` claim function.
+6. `20261105050000_unicode_usernames.sql` — Sinhala/Tamil usernames, NFC
+   normalisation, and the Unicode-safe profile trigger.
 
 ### Dashboard method (recommended)
 
@@ -200,9 +202,12 @@ redirecting. Keep the Site URL set to your real origin.
 - **Google:** OAuth verifies the email. The callback creates a session. A new
   profile has `onboarding_completed = false`, so the member is sent to
   `/onboarding` to choose a username and password.
-- **Invite code:** a server action creates a confirmed Supabase user with an
-  internal `<username>@login.kaluwo.invalid` address, then atomically claims the
+- **Invite code:** a server action creates a confirmed Supabase user with a
+  random `user-<uuid>@login.kaluwo.invalid` address, then atomically claims the
   invite code. The member can sign in with the username + password immediately.
+- **Usernames:** 3-20 characters, lowercase and NFC-normalised. English,
+  Sinhala and Tamil letters/marks, digits and underscore are allowed; the
+  database constraint and the profile trigger enforce the same set.
 - **Login:** Google, or username + password. `resolve_login_email()` maps the
   username to the account's real or internal email before Supabase Auth checks
   the password.

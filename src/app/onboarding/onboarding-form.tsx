@@ -100,7 +100,8 @@ export function OnboardingForm({
           value={username}
         />
         <p className="mt-1 text-[11px] text-faint">
-          3-20 characters. Letters, numbers and underscores; shown in lowercase.
+          3-20 characters. English, Sinhala or Tamil letters, numbers and
+          underscores; shown in lowercase.
         </p>
       </div>
 

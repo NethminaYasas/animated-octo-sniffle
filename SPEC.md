@@ -75,7 +75,8 @@ The SQL lives in `supabase/migrations/`. Tables:
 ### `profiles`
 
 - `id` — same as the Supabase auth user id
-- `username` — unique
+- `username` — unique; 3-20 characters, lowercase, NFC-normalised. English,
+  Sinhala and Tamil letters/marks, digits and underscore are allowed.
 - `avatar_url`
 - `role` — `member` / `moderator` / `admin`
 - `is_banned`
@@ -416,9 +417,17 @@ Apply these to every task.
   and does not carry `app_metadata.kaluwo_invite = true`. `app_metadata` is
   writable only by the service role, so calling Supabase's public sign-up
   endpoint directly with the anon key still fails the invite gate.
-- Invite-code accounts have no real email. Supabase Auth still needs an
-  email-shaped identifier, so they use
-  `<username>@login.kaluwo.invalid`. The profile page hides that address.
+- Usernames allow English, Sinhala and Tamil letters/marks, digits and
+  underscore, plus ZWNJ/ZWJ for conjunct sequences. They are lowercase and
+  NFC-normalised in the app, the trigger and the database constraint, so
+  visually identical Unicode sequences cannot create duplicate accounts.
+  Other scripts are rejected to reduce lookalike-script impersonation.
+- Invite-code accounts use a random `<uuid>@login.kaluwo.invalid` address.
+  It was previously derived from the username, but Sinhala/Tamil characters
+  are not safe email local parts. `resolve_login_email()` still maps the
+  username to the stored address.
+- The global font stack includes Noto Sans Sinhala and Noto Sans Tamil so
+  Sinhala/Tamil usernames render consistently.
 - Google accounts keep their real Google email and can use the password-reset
   email. Invite-code accounts cannot reset by email because their address
   cannot receive mail.

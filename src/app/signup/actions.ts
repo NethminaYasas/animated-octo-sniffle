@@ -1,7 +1,7 @@
 "use server";
 
 import { authErrorMessage } from "@/lib/auth/errors";
-import { internalEmailForUsername } from "@/lib/auth/internal-email";
+import { createInternalEmail } from "@/lib/auth/internal-email";
 import { verifyTurnstile } from "@/lib/auth/turnstile";
 import { normaliseUsername, usernameProblem } from "@/lib/auth/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -108,7 +108,7 @@ export async function signUpWithInvite(input: {
     };
   }
 
-  const email = internalEmailForUsername(username);
+  const email = createInternalEmail();
 
   const releaseInvite = async () => {
     const { error: releaseError } = await admin
