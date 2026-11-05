@@ -1,22 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import {
-  Geist,
-  Geist_Mono,
-  Noto_Sans_Sinhala,
-  Noto_Sans_Tamil,
-} from "next/font/google";
+import { Noto_Sans_Sinhala, Noto_Sans_Tamil } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 const notoSinhala = Noto_Sans_Sinhala({
   variable: "--font-noto-sinhala",
@@ -42,7 +27,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${notoSinhala.variable} ${notoTamil.variable} h-full antialiased`}
+      className={`${notoSinhala.variable} ${notoTamil.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         {children}

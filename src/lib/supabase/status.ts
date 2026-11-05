@@ -5,7 +5,7 @@ export type SupabaseConnection =
   | { state: "unconfigured" }
   | { state: "error"; message: string };
 
-const CONNECTION_TIMEOUT_MS = 5_000;
+const CONNECTION_TIMEOUT_MS = 3_000;
 
 /**
  * Makes a small, read-only request to the Supabase Auth settings endpoint.

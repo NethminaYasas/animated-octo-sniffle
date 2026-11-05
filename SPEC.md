@@ -209,3 +209,10 @@ Apply these to every task.
   time (verified with a production build and values supplied only at startup).
   Client Components that call Supabase will need the `NEXT_PUBLIC_*` values
   available when the app is built, which is a later deployment concern.
+- The home page uses a Reddit-style forum shell: top bar, board navigation,
+  thread feed, and community sidebar. Non-functional controls are visibly
+  disabled rather than pretending to work before their step is built.
+- The Supabase status is streamed behind a `Suspense` boundary, so the forum
+  shell paints immediately even if the project check is slow or unreachable.
+- The connection check is bounded by a 3-second timeout and returns a visible
+  error state instead of hanging indefinitely.

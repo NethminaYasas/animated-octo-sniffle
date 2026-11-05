@@ -70,7 +70,7 @@ are for later steps. Leave them alone for now.
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The Supabase status card
+Open [http://localhost:3000](http://localhost:3000). The Supabase status banner
 should say **Connected**. If the values are missing you will see **Setup
 needed**; if they are wrong you will see a short error explaining what to
 check.
@@ -93,7 +93,7 @@ src/
   app/
     globals.css       Global Tailwind styles and font variables
     layout.tsx        Root layout, metadata and Sinhala/Tamil fonts
-    page.tsx          Home page and Supabase status card
+    page.tsx          Home page, forum shell and Supabase status banner
   lib/
     supabase/
       client.ts       Supabase client for Client Components
