@@ -1,185 +1,193 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
-import { normaliseUsername } from "@/lib/auth/validation";
+import {
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "@/lib/forum/actions";
+import { createClient } from "@/lib/supabase/client";
 
-export const NOTIFICATION_KINDS = [
-  "reply",
-  "quote",
-  "mention",
-  "saved",
-] as const;
+export const NOTIFICATION_KINDS = ["reply", "quote", "mention"] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
-export type SavedNotification = {
-  id: string;
-  recipient: string;
-  actor: string;
+export type ForumNotification = {
+  id: number;
   kind: NotificationKind;
+  actor: string;
   threadId: number;
   threadTitle: string;
-  commentId: number | null;
+  postId: number;
   excerpt: string;
+  readAt: string | null;
   createdAt: string;
-  read: boolean;
 };
 
-const NOTIFICATIONS_KEY = "kaluwo:notifications";
-const NOTIFICATIONS_EVENT = "kaluwo:notifications-changed";
-const MAX_NOTIFICATIONS = 200;
+type NotificationRow = {
+  id: number;
+  kind: NotificationKind;
+  actor_username: string;
+  thread_id: number;
+  thread_title: string;
+  post_id: number;
+  excerpt: string;
+  read_at: string | null;
+  created_at: string;
+};
 
-function createId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function mapRow(row: NotificationRow): ForumNotification {
+  return {
+    id: row.id,
+    kind: row.kind,
+    actor: row.actor_username,
+    threadId: row.thread_id,
+    threadTitle: row.thread_title,
+    postId: row.post_id,
+    excerpt: row.excerpt,
+    readAt: row.read_at,
+    createdAt: row.created_at,
+  };
 }
 
-function readRaw(): string {
-  try {
-    if (typeof window === "undefined") {
-      return "";
+export function useNotifications(userId: string | null) {
+  const [notifications, setNotifications] = useState<ForumNotification[]>([]);
+  const [loading, setLoading] = useState(Boolean(userId));
+  const [reloadToken, setReloadToken] = useState(0);
+
+  useEffect(() => {
+    if (!userId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the bell when the session ends
+      setNotifications([]);
+      setLoading(false);
+      return;
     }
 
-    return window.localStorage.getItem(NOTIFICATIONS_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
+    let active = true;
+    let supabase: ReturnType<typeof createClient> | null = null;
+    let channel: ReturnType<ReturnType<typeof createClient>["channel"]> | null =
+      null;
 
-function isNotification(value: unknown): value is SavedNotification {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
+    const load = async () => {
+      try {
+        supabase ??= createClient();
+        const { data, error } = await supabase
+          .from("notifications")
+          .select(
+            "id, kind, actor_username, thread_id, thread_title, post_id, excerpt, read_at, created_at",
+          )
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(50);
 
-  const notification = value as Record<string, unknown>;
+        if (error) {
+          throw error;
+        }
 
-  return (
-    typeof notification.id === "string" &&
-    typeof notification.recipient === "string" &&
-    typeof notification.actor === "string" &&
-    (notification.kind === "reply" ||
-      notification.kind === "quote" ||
-      notification.kind === "mention" ||
-      notification.kind === "saved") &&
-    typeof notification.threadId === "number" &&
-    typeof notification.threadTitle === "string" &&
-    (notification.commentId === null ||
-      typeof notification.commentId === "number") &&
-    typeof notification.excerpt === "string" &&
-    typeof notification.createdAt === "string" &&
-    typeof notification.read === "boolean"
-  );
-}
+        if (active) {
+          setNotifications(
+            ((data ?? []) as NotificationRow[]).map(mapRow),
+          );
+        }
+      } catch {
+        // Polling keeps trying. The bell simply stays empty on a hard failure.
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
 
-function parseNotifications(raw: string): SavedNotification[] {
-  if (!raw) {
-    return [];
-  }
+    void load();
 
-  try {
-    const parsed = JSON.parse(raw) as unknown;
+    // Realtime is the fast path; the 60-second interval is the documented
+    // fallback when the websocket is unavailable or the channel errors.
+    // The user_id filter is required for DELETE events: Realtime applies RLS
+    // to INSERT/UPDATE, but a DELETE payload has no row to check, so without
+    // the filter every signed-in client would receive every member's deletes.
+    try {
+      supabase = createClient();
+      channel = supabase
+        .channel(`kaluwo-notifications-${userId}-${crypto.randomUUID()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            void load();
+          },
+        )
+        .subscribe();
+    } catch {
+      // The interval below still works.
+    }
 
-    return Array.isArray(parsed) ? parsed.filter(isNotification) : [];
-  } catch {
-    return [];
-  }
-}
+    const interval = window.setInterval(() => {
+      void load();
+    }, 60_000);
 
-function writeNotifications(notifications: SavedNotification[]): boolean {
-  try {
-    window.localStorage.setItem(
-      NOTIFICATIONS_KEY,
-      JSON.stringify(notifications),
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+
+      if (supabase && channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [reloadToken, userId]);
+
+  const reload = () => setReloadToken((current) => current + 1);
+
+  const markRead = async (id: number) => {
+    const readAt = new Date().toISOString();
+    setNotifications((current) =>
+      current.map((notification) =>
+        notification.id === id
+          ? { ...notification, readAt }
+          : notification,
+      ),
     );
-    window.dispatchEvent(new Event(NOTIFICATIONS_EVENT));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
-function subscribe(onChange: () => void): () => void {
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === NOTIFICATIONS_KEY) {
-      onChange();
+    try {
+      const result = await markNotificationRead(id);
+
+      if (!result.ok) {
+        reload();
+      }
+    } catch {
+      reload();
     }
   };
 
-  window.addEventListener(NOTIFICATIONS_EVENT, onChange);
-  window.addEventListener("storage", handleStorage);
+  const markAllRead = async () => {
+    const readAt = new Date().toISOString();
+    setNotifications((current) =>
+      current.map((notification) => ({ ...notification, readAt })),
+    );
 
-  return () => {
-    window.removeEventListener(NOTIFICATIONS_EVENT, onChange);
-    window.removeEventListener("storage", handleStorage);
-  };
-}
+    try {
+      const result = await markAllNotificationsRead();
 
-/** Notifications for one member, newest first. */
-export function useNotifications(
-  username: string | null,
-): SavedNotification[] {
-  const raw = useSyncExternalStore(subscribe, readRaw, () => "");
-
-  return useMemo(() => {
-    if (!username) {
-      return [];
+      if (!result.ok) {
+        reload();
+      }
+    } catch {
+      reload();
     }
-
-    const recipient = normaliseUsername(username);
-
-    return parseNotifications(raw)
-      .filter((notification) => notification.recipient === recipient)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [raw, username]);
-}
-
-export function addNotification(
-  input: Omit<SavedNotification, "id" | "createdAt" | "read">,
-): boolean {
-  const recipient = normaliseUsername(input.recipient);
-  const actor = normaliseUsername(input.actor);
-
-  if (!recipient || !actor || recipient === actor) {
-    return false;
-  }
-
-  const notification: SavedNotification = {
-    ...input,
-    recipient,
-    actor,
-    id: createId(),
-    createdAt: new Date().toISOString(),
-    read: false,
   };
 
-  return writeNotifications(
-    [notification, ...parseNotifications(readRaw())].slice(0, MAX_NOTIFICATIONS),
-  );
-}
-
-export function markNotificationRead(id: string): boolean {
-  return writeNotifications(
-    parseNotifications(readRaw()).map((notification) =>
-      notification.id === id ? { ...notification, read: true } : notification,
+  return {
+    notifications,
+    loading,
+    unread: notifications.reduce(
+      (count, notification) => count + (notification.readAt ? 0 : 1),
+      0,
     ),
-  );
-}
-
-export function markAllNotificationsRead(username: string): boolean {
-  const recipient = normaliseUsername(username);
-
-  return writeNotifications(
-    parseNotifications(readRaw()).map((notification) =>
-      notification.recipient === recipient
-        ? { ...notification, read: true }
-        : notification,
-    ),
-  );
+    markRead,
+    markAllRead,
+  };
 }

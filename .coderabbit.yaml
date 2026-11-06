@@ -1,0 +1,66 @@
+language: en-GB
+
+reviews:
+  path_instructions:
+    - path: "supabase/migrations/**"
+      instructions: |
+        Scrutinise RLS correctness above all else. For every table, check that
+        RLS is enabled and that explicit policies exist for each intended
+        operation. Look for:
+        - missing or overly broad SELECT/INSERT/UPDATE/DELETE policies;
+        - USING vs WITH CHECK mistakes;
+        - privilege escalation through column grants, SECURITY DEFINER
+          functions, unqualified search_path, or helper functions exposed in
+          the public schema;
+        - direct INSERT/UPDATE paths that bypass a server action's checks;
+        - triggers that write audit rows and then raise (the write rolls back);
+        - cursor pagination that uses OFFSET;
+        - rate-limit counters that are not atomic or do not reset per window;
+        - notification recipients that can be supplied by a client;
+        - soft-deleted content that remains visible or keeps sensitive excerpts.
+        Never suggest weakening a policy just to make a test pass.
+    - path: "src/lib/auth/**"
+      instructions: |
+        Check authentication and authorization carefully: session handling,
+        server-side re-checks of role and ban state, secret exposure, Turnstile
+        verification, redirect validation, and whether any client-supplied role,
+        recipient, author id or ban flag is trusted.
+    - path: "src/lib/forum/**"
+      instructions: |
+        Check server actions for missing authentication/authorization, input
+        validation, HTML sanitisation, rate-limit error handling, notification
+        recipient derivation from database rows, and accidental leakage of raw
+        database records to the client.
+    - path: "src/lib/moderation/**"
+      instructions: |
+        Check that every staff action goes through the audited RPC, re-checks
+        the caller's live role and ban state, requires a reason, enforces the
+        moderator/admin hierarchy, protects the last admin, and never accepts
+        an actor id or role from the client.
+    - path: "src/lib/reports/**"
+      instructions: |
+        Check report target validation, open-report deduplication, rate-limit
+        handling, and that reporters cannot read other reporters' rows or the
+        staff-only resolution table.
+    - path: "src/app/moderation/**"
+      instructions: |
+        Check that staff/admin pages are server-gated by the database role, not
+        by client state, and that forms surface RPC errors without suggesting
+        that an action succeeded.
+    - path: "src/lib/crypto/**"
+      instructions: |
+        Phase 5 DM crypto. Scrutinise key generation and storage, private-key
+        wrapping, KDF choice and parameters, nonce uniqueness/reuse, AES-GCM
+        authentication, ECDH usage, key-change warnings, and whether any
+        plaintext or private key can reach the server or logs.
+    - path: "src/lib/dm/**"
+      instructions: |
+        Phase 5 DM code. Check that the server only sees ciphertext, nonces,
+        counters and metadata; that RLS restricts conversations to the two
+        participants; that blocked/banned users cannot send; and that reports
+        only contain user-supplied decrypted evidence.
+    - path: "tests/**"
+      instructions: |
+        Check that tests exercise real RLS through PostgREST or an
+        authenticated database role, not service-role shortcuts. Flag tests
+        that create a false sense of security by bypassing RLS.

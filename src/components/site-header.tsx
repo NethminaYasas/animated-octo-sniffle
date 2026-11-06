@@ -5,6 +5,7 @@ import {
   LifeBuoy,
   LogIn,
   Search,
+  Shield,
   UserPlus,
   UserRound,
 } from "lucide-react";
@@ -21,11 +22,8 @@ import {
 
 import { NotificationPanel } from "@/components/notification-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
-import {
-  markAllNotificationsRead,
-  markNotificationRead,
-  useNotifications,
-} from "@/lib/notifications";
+import { useNotifications } from "@/lib/notifications";
+import type { UserRole } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 
 type SessionUser = {
@@ -37,7 +35,22 @@ type HeaderUser = {
   id: string;
   name: string;
   avatarUrl: string | null;
+  role: UserRole | null;
 };
+
+const ROLES = new Set<UserRole>([
+  "new_member",
+  "member",
+  "senior_member",
+  "moderator",
+  "admin",
+]);
+
+function cleanRole(value: unknown): UserRole | null {
+  return typeof value === "string" && ROLES.has(value as UserRole)
+    ? (value as UserRole)
+    : null;
+}
 
 // The header renders on the server before the session cookie is read, so on
 // every refresh it starts without a member. Caching the last resolved member
@@ -46,8 +59,9 @@ type HeaderUser = {
 //
 // The version suffix discards caches written when the header fell back to the
 // Google profile photo. Only profiles.avatar_url is a valid avatar source.
-const HEADER_USER_KEY = "kaluwo:header-user:v2";
+const HEADER_USER_KEY = "kaluwo:header-user:v3";
 const LEGACY_HEADER_USER_KEY = "kaluwo:header-user";
+const LEGACY_HEADER_USER_KEY_V2 = "kaluwo:header-user:v2";
 
 function cleanAvatarUrl(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== ""
@@ -58,6 +72,7 @@ function cleanAvatarUrl(value: unknown): string | null {
 function readCachedHeaderUser(): HeaderUser | null {
   try {
     window.localStorage.removeItem(LEGACY_HEADER_USER_KEY);
+    window.localStorage.removeItem(LEGACY_HEADER_USER_KEY_V2);
     const raw = window.localStorage.getItem(HEADER_USER_KEY);
     if (!raw) {
       return null;
@@ -77,6 +92,7 @@ function readCachedHeaderUser(): HeaderUser | null {
         avatarUrl: cleanAvatarUrl(
           (parsed as { avatarUrl?: unknown }).avatarUrl,
         ),
+        role: cleanRole((parsed as { role?: unknown }).role),
       };
     }
   } catch {
@@ -110,21 +126,17 @@ export function SiteHeader() {
   const profileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
-  const notifications = useNotifications(user?.name ?? null);
-  const unread = notifications.reduce(
-    (count, notification) => count + (notification.read ? 0 : 1),
-    0,
+  const { notifications, unread, markRead, markAllRead } = useNotifications(
+    user?.id ?? null,
   );
   const closeNotifications = useCallback(() => {
     setNotificationsOpen(false);
   }, []);
   const handleMarkAllRead = () => {
-    if (user?.name) {
-      markAllNotificationsRead(user.name);
-    }
+    void markAllRead();
   };
-  const handleOpenNotification = (id: string) => {
-    markNotificationRead(id);
+  const handleOpenNotification = (id: number) => {
+    void markRead(id);
   };
 
   useEffect(() => {
@@ -214,16 +226,17 @@ export function SiteHeader() {
             id: authUser.id,
             name: metadataName ?? "member",
             avatarUrl: null,
+            role: null,
           };
         });
         setLoading(false);
 
         // The trigger may have appended a suffix to the requested username.
-        // Read the canonical username and the profile avatar. Google is only
-        // used to verify the account, so its photo is never used here.
+        // Read the canonical username, profile avatar and live role. Google is
+        // only used to verify the account, so its photo is never used here.
         supabase
           .from("profiles")
-          .select("username, avatar_url")
+          .select("username, avatar_url, role")
           .eq("id", authUser.id)
           .maybeSingle()
           .then(({ data }) => {
@@ -240,12 +253,18 @@ export function SiteHeader() {
 
               if (
                 current.name === data.username &&
-                current.avatarUrl === avatarUrl
+                current.avatarUrl === avatarUrl &&
+                current.role === data.role
               ) {
                 return current;
               }
 
-              return { ...current, name: data.username, avatarUrl };
+              return {
+                ...current,
+                name: data.username,
+                avatarUrl,
+                role: data.role,
+              };
             });
           });
       };
@@ -440,6 +459,17 @@ export function SiteHeader() {
                       <UserRound className="size-4" />
                       Profile
                     </Link>
+                    {user.role === "moderator" || user.role === "admin" ? (
+                      <Link
+                        role="menuitem"
+                        href="/moderation"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-body transition-colors hover:bg-surface-muted hover:text-ink"
+                      >
+                        <Shield className="size-4" />
+                        Moderation
+                      </Link>
+                    ) : null}
                     <Link
                       role="menuitem"
                       href="/support"

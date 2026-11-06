@@ -1,0 +1,4 @@
+-- No application seed data.
+--
+-- Boards are inserted by 20261105000000_initial_schema.sql. Test users and
+-- test threads are created and removed by the Phase 1 test suites.

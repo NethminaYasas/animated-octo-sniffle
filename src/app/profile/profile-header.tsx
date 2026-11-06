@@ -2,6 +2,8 @@ import { CalendarDays, Plus, Shield, Sparkles, UserRound } from "lucide-react";
 import Link from "next/link";
 
 import { LogoutButton } from "@/components/logout-button";
+import { ReportButton } from "@/components/report-button";
+import { isBanActive } from "@/lib/ban";
 import { formatRole, type UserRole } from "@/lib/roles";
 
 export type PublicProfile = {
@@ -9,6 +11,7 @@ export type PublicProfile = {
   avatar_url: string | null;
   role: UserRole;
   is_banned: boolean;
+  banned_until: string | null;
   reaction_score: number;
   created_at: string;
 };
@@ -19,9 +22,13 @@ export type PublicProfile = {
  */
 export function ProfileHeader({
   profile,
+  profileId,
+  viewerId,
   isOwnProfile,
 }: {
   profile: PublicProfile;
+  profileId: string;
+  viewerId: string | null;
   isOwnProfile: boolean;
 }) {
   const joined = new Date(profile.created_at).toLocaleDateString("en-GB", {
@@ -33,6 +40,7 @@ export function ProfileHeader({
     profile.reaction_score > 0
       ? `+${profile.reaction_score}`
       : String(profile.reaction_score);
+  const isBanned = isBanActive(profile.is_banned, profile.banned_until);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-line bg-surface">
@@ -71,6 +79,15 @@ export function ProfileHeader({
               </Link>
               <LogoutButton />
             </div>
+          ) : viewerId ? (
+            <div className="pb-1 text-xs font-semibold text-muted">
+              <ReportButton
+                targetType="user"
+                targetUserId={profileId}
+                currentUserId={viewerId}
+                label="Report member"
+              />
+            </div>
           ) : null}
         </div>
 
@@ -85,7 +102,7 @@ export function ProfileHeader({
               {formatRole(profile.role)}
             </span>
 
-            {profile.is_banned ? (
+            {isBanned ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300">
                 <UserRound className="size-3" aria-hidden="true" />
                 Banned
@@ -116,12 +133,12 @@ export function ProfileHeader({
               <span
                 aria-hidden="true"
                 className={`size-2 rounded-full ${
-                  profile.is_banned ? "bg-red-500" : "bg-emerald-500"
+                  isBanned ? "bg-red-500" : "bg-emerald-500"
                 }`}
               />
               <dt className="sr-only">Status</dt>
               <dd className="text-muted">
-                {profile.is_banned ? "Banned" : "Active"}
+                {isBanned ? "Banned" : "Active"}
               </dd>
             </div>
           </dl>

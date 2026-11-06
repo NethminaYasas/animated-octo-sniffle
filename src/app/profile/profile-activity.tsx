@@ -4,22 +4,10 @@ import { FileText, MessageSquare, Reply } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { normaliseUsername } from "@/lib/auth/validation";
-import {
-  FEED_CHANGED_EVENT,
-  loadAllComments,
-  loadDeletedPostIds,
-  loadPosts,
-  type SavedComment,
-  type SavedPost,
-} from "@/lib/feed-store";
+import { BOARDS } from "@/lib/boards";
 import { excerptFromHtml } from "@/lib/mentions";
-import {
-  loadReactionsForUser,
-  type ReactionKind,
-  type UserReaction,
-} from "@/lib/reactions";
-import { SEED_POSTS } from "@/lib/seed-posts";
+import type { ReactionKind } from "@/lib/reactions";
+import { createClient } from "@/lib/supabase/client";
 import { formatRelativeTime } from "@/lib/time";
 
 const REACTION_EMOJI: Record<ReactionKind, string> = {
@@ -32,12 +20,43 @@ const REACTION_EMOJI: Record<ReactionKind, string> = {
 
 type ProfileTab = "overview" | "posts" | "comments" | "reactions";
 
+type ActivityPost = {
+  id: number;
+  boardId: string;
+  boardName: string;
+  boardInitial: string;
+  author: string;
+  authorInitial: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  commentCount: number;
+  isPreview: boolean;
+};
+
+type ActivityComment = {
+  id: number;
+  postId: number;
+  author: string;
+  authorInitial: string;
+  body: string;
+  createdAt: string;
+  replyToId: number | null;
+  replyToAuthor: string | null;
+};
+
+type ActivityReaction = {
+  targetType: "post" | "comment";
+  targetId: number;
+  kind: ReactionKind;
+};
+
 type ProfileActivityData = {
-  allPosts: SavedPost[];
-  posts: SavedPost[];
-  allComments: SavedComment[];
-  comments: SavedComment[];
-  reactions: UserReaction[];
+  allPosts: ActivityPost[];
+  posts: ActivityPost[];
+  allComments: ActivityComment[];
+  comments: ActivityComment[];
+  reactions: ActivityReaction[];
 };
 
 type ActivityEntry = {
@@ -59,60 +78,326 @@ type ReactionEntry = {
   href: string;
 };
 
+type ThreadLookup = {
+  id: number;
+  title: string;
+  board_id: string;
+  is_deleted: boolean;
+};
+
 function byNewest(a: { createdAt: string }, b: { createdAt: string }) {
   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
-function readActivity(username: string): ProfileActivityData {
-  const member = normaliseUsername(username);
-  const deletedPosts = new Set(loadDeletedPostIds());
-  const allPosts = [...SEED_POSTS, ...loadPosts()].filter(
-    (post) => !deletedPosts.has(post.id),
-  );
-  const visiblePostIds = new Set(allPosts.map((post) => post.id));
-  const allComments = loadAllComments().filter((comment) =>
-    visiblePostIds.has(comment.postId),
-  );
+function initialOf(value: string): string {
+  return value.slice(0, 1).toLowerCase() || "?";
+}
+
+function boardFor(boardId: string): { name: string; initial: string } {
+  const board = BOARDS.find((candidate) => candidate.id === boardId);
 
   return {
-    allPosts,
-    posts: allPosts
-      .filter((post) => normaliseUsername(post.author) === member)
-      .sort(byNewest),
-    allComments,
-    comments: allComments
-      .filter((comment) => normaliseUsername(comment.author) === member)
-      .sort(byNewest),
-    reactions: loadReactionsForUser(member),
+    name: board?.name ?? "Board",
+    initial: board?.initial ?? "?",
+  };
+}
+
+async function readActivity(
+  profileId: string,
+  username: string,
+): Promise<ProfileActivityData> {
+  const supabase = createClient();
+
+  const [threadsResponse, commentsResponse, reactionsResponse] =
+    await Promise.all([
+      supabase
+        .from("threads")
+        .select("id, title, board_id, created_at, reply_count")
+        .eq("author_id", profileId)
+        .eq("is_deleted", false)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("posts")
+        .select(
+          "id, thread_id, content, created_at, reply_to_post_id, thread:threads!posts_thread_id_fkey(id, title, board_id, is_deleted)",
+        )
+        .eq("author_id", profileId)
+        .eq("is_deleted", false)
+        .eq("is_opening", false)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("reactions")
+        .select(
+          "post_id, kind, created_at, post:posts!reactions_post_id_fkey(id, thread_id, content, is_opening, is_deleted, created_at, thread:threads!posts_thread_id_fkey(id, title, board_id, is_deleted))",
+        )
+        .eq("user_id", profileId)
+        .order("created_at", { ascending: false })
+        .limit(100),
+    ]);
+
+  if (threadsResponse.error || commentsResponse.error || reactionsResponse.error) {
+    throw new Error("Could not load profile activity.");
+  }
+
+  const authoredThreads = (threadsResponse.data ?? []) as unknown as Array<{
+    id: number;
+    title: string;
+    board_id: string;
+    created_at: string;
+    reply_count: number;
+  }>;
+
+  const threadIds = authoredThreads.map((thread) => thread.id);
+  let openingPosts: Array<{ thread_id: number; content: string }> = [];
+
+  if (threadIds.length > 0) {
+    const { data: openingData, error: openingError } = await supabase
+      .from("posts")
+      .select("thread_id, content")
+      .in("thread_id", threadIds)
+      .eq("is_opening", true)
+      .eq("is_deleted", false);
+
+    if (openingError) {
+      throw new Error("Could not load profile activity.");
+    }
+
+    openingPosts = (openingData ?? []) as unknown as typeof openingPosts;
+  }
+
+  const openingByThread = new Map(
+    openingPosts.map((post) => [post.thread_id, post.content]),
+  );
+
+  const authoredComments = (
+    (commentsResponse.data ?? []) as unknown as Array<{
+      id: number;
+      thread_id: number;
+      content: string;
+      created_at: string;
+      reply_to_post_id: number | null;
+      thread: ThreadLookup | null;
+    }>
+  ).filter(
+    (comment): comment is typeof comment & { thread: ThreadLookup } =>
+      Boolean(comment.thread && !comment.thread.is_deleted),
+  );
+
+  const replyIds = [
+    ...new Set(
+      authoredComments
+        .map((comment) => comment.reply_to_post_id)
+        .filter((id): id is number => typeof id === "number"),
+    ),
+  ];
+
+  const replyAuthors = new Map<number, string>();
+
+  if (replyIds.length > 0) {
+    const { data } = await supabase
+      .from("posts")
+      .select("id, author:profiles!posts_author_id_fkey(username)")
+      .in("id", replyIds);
+
+    for (const row of (data ?? []) as unknown as Array<{
+      id: number;
+      author: { username: string } | null;
+    }>) {
+      if (row.author?.username) {
+        replyAuthors.set(row.id, row.author.username);
+      }
+    }
+  }
+
+  const authoredPosts: ActivityPost[] = authoredThreads
+    .filter((thread) => openingByThread.has(thread.id))
+    .map((thread) => {
+      const board = boardFor(thread.board_id);
+
+      return {
+        id: thread.id,
+        boardId: thread.board_id,
+        boardName: board.name,
+        boardInitial: board.initial,
+        author: username,
+        authorInitial: initialOf(username),
+        title: thread.title,
+        content: openingByThread.get(thread.id) ?? "",
+        createdAt: thread.created_at,
+        commentCount: thread.reply_count,
+        isPreview: false,
+      };
+    });
+
+  const allPosts = new Map(
+    authoredPosts.map((post) => [post.id, post] as const),
+  );
+
+  const ensureThread = (thread: ThreadLookup) => {
+    if (allPosts.has(thread.id)) {
+      return;
+    }
+
+    const board = boardFor(thread.board_id);
+
+    allPosts.set(thread.id, {
+      id: thread.id,
+      boardId: thread.board_id,
+      boardName: board.name,
+      boardInitial: board.initial,
+      author: "",
+      authorInitial: "?",
+      title: thread.title,
+      content: "",
+      createdAt: "",
+      commentCount: 0,
+      isPreview: false,
+    });
+  };
+
+  const authoredCommentEntries: ActivityComment[] = authoredComments.map(
+    (comment) => {
+      ensureThread(comment.thread);
+
+      return {
+        id: comment.id,
+        postId: comment.thread_id,
+        author: username,
+        authorInitial: initialOf(username),
+        body: comment.content,
+        createdAt: comment.created_at,
+        replyToId: comment.reply_to_post_id,
+        replyToAuthor: comment.reply_to_post_id
+          ? (replyAuthors.get(comment.reply_to_post_id) ?? null)
+          : null,
+      };
+    },
+  );
+
+  const allComments = new Map(
+    authoredCommentEntries.map((comment) => [comment.id, comment] as const),
+  );
+
+  const reactionRows = (reactionsResponse.data ?? []) as unknown as Array<{
+    post_id: number;
+    kind: ReactionKind;
+    created_at: string;
+    post: {
+      id: number;
+      thread_id: number;
+      content: string;
+      is_opening: boolean;
+      is_deleted: boolean;
+      created_at: string;
+      thread: ThreadLookup | null;
+    } | null;
+  }>;
+
+  const reactions: ActivityReaction[] = [];
+
+  for (const row of reactionRows) {
+    const post = row.post;
+
+    if (
+      !post ||
+      post.is_deleted ||
+      !post.thread ||
+      post.thread.is_deleted
+    ) {
+      continue;
+    }
+
+    ensureThread(post.thread);
+
+    if (post.is_opening) {
+      reactions.push({
+        targetType: "post",
+        targetId: post.thread_id,
+        kind: row.kind,
+      });
+      continue;
+    }
+
+    if (!allComments.has(post.id)) {
+      allComments.set(post.id, {
+        id: post.id,
+        postId: post.thread_id,
+        author: "",
+        authorInitial: "?",
+        body: post.content,
+        createdAt: post.created_at,
+        replyToId: null,
+        replyToAuthor: null,
+      });
+    }
+
+    reactions.push({
+      targetType: "comment",
+      targetId: post.id,
+      kind: row.kind,
+    });
+  }
+
+  return {
+    allPosts: [...allPosts.values()],
+    posts: authoredPosts,
+    allComments: [...allComments.values()],
+    comments: authoredCommentEntries,
+    reactions,
   };
 }
 
 export function ProfileActivity({
+  profileId,
   username,
   isOwnProfile,
 }: {
+  profileId: string;
   username: string;
   isOwnProfile: boolean;
 }) {
   const [data, setData] = useState<ProfileActivityData | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    const refresh = () => {
-      setData(readActivity(username));
-      setNow(new Date());
+    let active = true;
+
+    const refresh = async () => {
+      try {
+        const next = await readActivity(profileId, username);
+
+        if (active) {
+          setData(next);
+          setError(null);
+          setNow(new Date());
+        }
+      } catch {
+        if (active) {
+          setData({
+            allPosts: [],
+            posts: [],
+            allComments: [],
+            comments: [],
+            reactions: [],
+          });
+          setError("Could not load this member's activity.");
+          setNow(new Date());
+        }
+      }
     };
 
-    refresh();
-    window.addEventListener(FEED_CHANGED_EVENT, refresh);
+    void refresh();
     const interval = window.setInterval(() => setNow(new Date()), 60_000);
 
     return () => {
-      window.removeEventListener(FEED_CHANGED_EVENT, refresh);
+      active = false;
       window.clearInterval(interval);
     };
-  }, [username]);
+  }, [profileId, username]);
 
   const postById = useMemo(
     () => new Map((data?.allPosts ?? []).map((post) => [post.id, post])),
@@ -214,16 +499,6 @@ export function ProfileActivity({
     return entries;
   }, [commentById, data, postById]);
 
-  const commentCounts = useMemo(() => {
-    const counts: Record<number, number> = {};
-
-    for (const comment of data?.allComments ?? []) {
-      counts[comment.postId] = (counts[comment.postId] ?? 0) + 1;
-    }
-
-    return counts;
-  }, [data]);
-
   const tabs: Array<{ id: ProfileTab; label: string; count?: number }> = [
     { id: "overview", label: "Overview" },
     { id: "posts", label: "Posts", count: data?.posts.length ?? 0 },
@@ -271,6 +546,12 @@ export function ProfileActivity({
         })}
       </div>
 
+      {error ? (
+        <p className="border-b border-line bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          {error}
+        </p>
+      ) : null}
+
       <div
         id={`profile-panel-${activeTab}`}
         role="tabpanel"
@@ -288,7 +569,6 @@ export function ProfileActivity({
         ) : activeTab === "posts" ? (
           <PostsPanel
             posts={data.posts}
-            commentCounts={commentCounts}
             now={now}
             isOwnProfile={isOwnProfile}
           />
@@ -454,12 +734,10 @@ function OverviewPanel({
 
 function PostsPanel({
   posts,
-  commentCounts,
   now,
   isOwnProfile,
 }: {
-  posts: SavedPost[];
-  commentCounts: Record<number, number>;
+  posts: ActivityPost[];
   now: Date | null;
   isOwnProfile: boolean;
 }) {
@@ -500,8 +778,8 @@ function PostsPanel({
           ) : null}
           <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-muted">
             <MessageSquare className="size-3.5" aria-hidden="true" />
-            {commentCounts[post.id] ?? 0}{" "}
-            {(commentCounts[post.id] ?? 0) === 1 ? "comment" : "comments"}
+            {post.commentCount}{" "}
+            {post.commentCount === 1 ? "comment" : "comments"}
           </div>
         </li>
       ))}
@@ -515,8 +793,8 @@ function CommentsPanel({
   now,
   isOwnProfile,
 }: {
-  comments: SavedComment[];
-  postById: Map<number, SavedPost>;
+  comments: ActivityComment[];
+  postById: Map<number, ActivityPost>;
   now: Date | null;
   isOwnProfile: boolean;
 }) {

@@ -1,5 +1,7 @@
 "use server";
 
+import { createHash } from "node:crypto";
+
 import { recordSecurityEvent } from "@/lib/audit/security-events";
 import { authErrorMessage } from "@/lib/auth/errors";
 import { createInternalEmail } from "@/lib/auth/internal-email";
@@ -30,6 +32,9 @@ export async function signUpWithInvite(input: {
   const username = normaliseUsername(input.username ?? "");
   const password = input.password ?? "";
   const inviteCode = (input.inviteCode ?? "").trim().toLowerCase();
+  const inviteCodeHash = createHash("sha256")
+    .update(inviteCode)
+    .digest("hex");
   const captchaToken = input.captchaToken ?? "";
 
   const usernameError = usernameProblem(username);
@@ -79,9 +84,10 @@ export async function signUpWithInvite(input: {
       .maybeSingle(),
     admin
       .from("invite_codes")
-      .select("code")
-      .eq("code", inviteCode)
+      .select("code_hash")
+      .eq("code_hash", inviteCodeHash)
       .is("used_at", null)
+      .is("revoked_at", null)
       .maybeSingle(),
   ]);
 
@@ -115,7 +121,7 @@ export async function signUpWithInvite(input: {
     const { error: releaseError } = await admin
       .from("invite_codes")
       .update({ used_at: null })
-      .eq("code", inviteCode)
+      .eq("code_hash", inviteCodeHash)
       .is("used_by", null);
 
     if (releaseError) {
@@ -199,7 +205,7 @@ export async function signUpWithInvite(input: {
   const { error: attributeError } = await admin
     .from("invite_codes")
     .update({ used_by: userId })
-    .eq("code", inviteCode);
+    .eq("code_hash", inviteCodeHash);
 
   if (attributeError) {
     console.error("could not attribute invite code:", attributeError.message);

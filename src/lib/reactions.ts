@@ -1,7 +1,3 @@
-"use client";
-
-import { useMemo, useSyncExternalStore } from "react";
-
 export const REACTION_KINDS = [
   "like",
   "laugh",
@@ -13,183 +9,75 @@ export const REACTION_KINDS = [
 export type ReactionKind = (typeof REACTION_KINDS)[number];
 export type ReactionTargetType = "post" | "comment";
 
-export type ReactionMap = Record<string, ReactionKind>;
+export type ReactionCounts = Record<ReactionKind, number>;
 
-type ReactionStore = Record<string, ReactionMap>;
+export type ReactionSummary = {
+  counts: ReactionCounts;
+  mine: ReactionKind | null;
+};
 
-const REACTIONS_KEY = "kaluwo:reactions";
-const REACTIONS_EVENT = "kaluwo:reactions-changed";
-
-export function reactionTargetKey(
-  targetType: ReactionTargetType,
-  targetId: number,
-): string {
-  return `${targetType}:${targetId}`;
-}
-
-function readRaw(): string {
-  try {
-    if (typeof window === "undefined") {
-      return "";
-    }
-
-    return window.localStorage.getItem(REACTIONS_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function isReactionKind(value: unknown): value is ReactionKind {
+export function isReactionKind(value: unknown): value is ReactionKind {
   return (
     typeof value === "string" &&
     (REACTION_KINDS as readonly string[]).includes(value)
   );
 }
 
-function parseStore(raw: string): ReactionStore {
-  if (!raw) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    const store: ReactionStore = {};
-
-    for (const [target, value] of Object.entries(
-      parsed as Record<string, unknown>,
-    )) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        continue;
-      }
-
-      const reactions: ReactionMap = {};
-
-      for (const [user, kind] of Object.entries(
-        value as Record<string, unknown>,
-      )) {
-        if (isReactionKind(kind)) {
-          reactions[user] = kind;
-        }
-      }
-
-      if (Object.keys(reactions).length > 0) {
-        store[target] = reactions;
-      }
-    }
-
-    return store;
-  } catch {
-    return {};
-  }
-}
-
-function writeStore(store: ReactionStore): boolean {
-  try {
-    window.localStorage.setItem(REACTIONS_KEY, JSON.stringify(store));
-    window.dispatchEvent(new Event(REACTIONS_EVENT));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function subscribe(onChange: () => void): () => void {
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === REACTIONS_KEY) {
-      onChange();
-    }
-  };
-
-  window.addEventListener(REACTIONS_EVENT, onChange);
-  window.addEventListener("storage", handleStorage);
-
-  return () => {
-    window.removeEventListener(REACTIONS_EVENT, onChange);
-    window.removeEventListener("storage", handleStorage);
+export function emptyReactionCounts(): ReactionCounts {
+  return {
+    like: 0,
+    laugh: 0,
+    wow: 0,
+    anger: 0,
+    dislike: 0,
   };
 }
 
-export function useReactions(
-  targetType: ReactionTargetType,
-  targetId: number,
-): ReactionMap {
-  const raw = useSyncExternalStore(subscribe, readRaw, () => "");
+export function summariseReactionRows(
+  rows: Array<{ user_id: string; kind: ReactionKind }>,
+  viewerId: string | null,
+): ReactionSummary {
+  const counts = emptyReactionCounts();
+  let mine: ReactionKind | null = null;
 
-  return useMemo(
-    () => parseStore(raw)[reactionTargetKey(targetType, targetId)] ?? {},
-    [raw, targetId, targetType],
-  );
+  for (const row of rows) {
+    counts[row.kind] += 1;
+
+    if (viewerId && row.user_id === viewerId) {
+      mine = row.kind;
+    }
+  }
+
+  return { counts, mine };
 }
 
-export type UserReaction = {
-  targetType: ReactionTargetType;
-  targetId: number;
+export type ReactionSummaryRow = {
   kind: ReactionKind;
+  total: number | string;
+  mine: boolean | null;
 };
 
-/** All reactions this member has left on this device. */
-export function loadReactionsForUser(username: string): UserReaction[] {
-  const member = username.trim().toLowerCase().normalize("NFC");
-  const store = parseStore(readRaw());
-  const reactions: UserReaction[] = [];
+/**
+ * Converts the database-side aggregate from thread_reaction_summary() into the
+ * shape the reaction bar uses.
+ */
+export function summariseReactionCounts(
+  rows: ReactionSummaryRow[],
+): ReactionSummary {
+  const counts = emptyReactionCounts();
+  let mine: ReactionKind | null = null;
 
-  for (const [target, byUser] of Object.entries(store)) {
-    const kind = byUser[member];
+  for (const row of rows) {
+    counts[row.kind] = Number(row.total) || 0;
 
-    // byUser is a plain object, so a username such as "constructor" would
-    // otherwise resolve to an inherited value.
-    if (!isReactionKind(kind)) {
-      continue;
+    if (row.mine) {
+      mine = row.kind;
     }
-
-    const [targetType, rawId] = target.split(":");
-
-    if (targetType !== "post" && targetType !== "comment") {
-      continue;
-    }
-
-    const targetId = Number(rawId);
-
-    if (!Number.isFinite(targetId)) {
-      continue;
-    }
-
-    reactions.push({ targetType, targetId, kind });
   }
 
-  return reactions;
+  return { counts, mine };
 }
 
-/**
- * Adds, changes or removes one member's reaction. Passing null removes it.
- * The username is the member's canonical profile username, lowercased.
- */
-export function setReaction(
-  targetType: ReactionTargetType,
-  targetId: number,
-  username: string,
-  kind: ReactionKind | null,
-): boolean {
-  const store = parseStore(readRaw());
-  const key = reactionTargetKey(targetType, targetId);
-  const reactions: ReactionMap = { ...(store[key] ?? {}) };
-
-  if (kind) {
-    reactions[username] = kind;
-  } else {
-    delete reactions[username];
-  }
-
-  if (Object.keys(reactions).length > 0) {
-    store[key] = reactions;
-  } else {
-    delete store[key];
-  }
-
-  return writeStore(store);
+export function reactionTotal(counts: ReactionCounts): number {
+  return REACTION_KINDS.reduce((total, kind) => total + counts[kind], 0);
 }

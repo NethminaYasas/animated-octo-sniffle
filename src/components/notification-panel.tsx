@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   AtSign,
   Bell,
-  Bookmark,
   CheckCheck,
   MessageSquareQuote,
   Reply,
@@ -13,8 +12,8 @@ import {
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import {
+  type ForumNotification,
   type NotificationKind,
-  type SavedNotification,
 } from "@/lib/notifications";
 import { formatRelativeTime } from "@/lib/time";
 
@@ -25,7 +24,6 @@ const KIND_META: Record<
   reply: { label: "replied to you", Icon: Reply },
   quote: { label: "quoted you", Icon: MessageSquareQuote },
   mention: { label: "mentioned you", Icon: AtSign },
-  saved: { label: "commented on a post you saved", Icon: Bookmark },
 };
 
 export function NotificationPanel({
@@ -35,16 +33,16 @@ export function NotificationPanel({
   onOpen,
   triggerRef,
 }: {
-  notifications: SavedNotification[];
+  notifications: ForumNotification[];
   onClose: () => void;
   onMarkAllRead: () => void;
-  onOpen: (id: string) => void;
+  onOpen: (id: number) => void;
   triggerRef?: RefObject<HTMLElement | null>;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState<Date | null>(null);
   const unread = notifications.reduce(
-    (count, notification) => count + (notification.read ? 0 : 1),
+    (count, notification) => count + (notification.readAt ? 0 : 1),
     0,
   );
 
@@ -116,19 +114,14 @@ export function NotificationPanel({
             You&apos;re all caught up
           </p>
           <p className="mx-auto mt-1 max-w-56 text-xs leading-5 text-muted">
-            Replies, quotes, @mentions and comments on posts you saved will
-            appear here.
+            Replies, quotes and @mentions will appear here, on every device.
           </p>
         </div>
       ) : (
         <ul className="max-h-[calc(100vh-7rem)] overflow-y-auto">
           {notifications.map((notification) => {
             const { label, Icon } = KIND_META[notification.kind];
-            const href = `/t/${notification.threadId}${
-              notification.commentId
-                ? `#comment-${notification.commentId}`
-                : ""
-            }`;
+            const href = `/t/${notification.threadId}#comment-${notification.postId}`;
 
             return (
               <li key={notification.id}>
@@ -139,7 +132,7 @@ export function NotificationPanel({
                     onClose();
                   }}
                   className={`flex gap-2.5 border-b border-line px-3 py-2.5 transition-colors last:border-b-0 ${
-                    notification.read
+                    notification.readAt
                       ? "bg-surface hover:bg-surface-muted"
                       : "bg-orange-50/60 hover:bg-orange-50 dark:bg-orange-950/20 dark:hover:bg-orange-950/30"
                   }`}
@@ -173,7 +166,7 @@ export function NotificationPanel({
                     </span>
                   </span>
 
-                  {!notification.read ? (
+                  {!notification.readAt ? (
                     <span
                       className="mt-1.5 size-2 shrink-0 rounded-full bg-orange-600"
                       aria-label="Unread"

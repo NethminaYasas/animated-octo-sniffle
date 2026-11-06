@@ -10,11 +10,13 @@ import { BackHomeButton } from "@/components/back-home-button";
 import { ForumShell } from "@/components/forum-shell";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { LoginGate } from "@/components/login-gate";
-import { normaliseUsername } from "@/lib/auth/validation";
+import {
+  TurnstileField,
+  type TurnstileFieldHandle,
+} from "@/components/turnstile-field";
 import { BOARDS } from "@/lib/boards";
-import { savePost, type SavedPost } from "@/lib/feed-store";
-import { excerptFromHtml, extractMentions } from "@/lib/mentions";
-import { addNotification } from "@/lib/notifications";
+import { createThread } from "@/lib/forum/actions";
+import { hasRichText } from "@/lib/rich-text";
 import { useAuthUser } from "@/lib/use-auth-user";
 
 function validBoardId(candidate: string | null): string {
@@ -153,12 +155,15 @@ function BoardPicker({
   );
 }
 
-function CreatePostForm({ authorName }: { authorName: string }) {
+function CreatePostForm({ isNewMember }: { isNewMember: boolean }) {
   const router = useRouter();
+  const captchaRef = useRef<TurnstileFieldHandle>(null);
 
   const [boardId, setBoardId] = useState("general");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -168,58 +173,58 @@ function CreatePostForm({ authorName }: { authorName: string }) {
     titleRef.current?.focus();
   }, []);
 
-  const board = BOARDS.find((candidate) => candidate.id === boardId) ?? BOARDS[0];
+  const handleSubmitPost = async () => {
+    if (submitting) {
+      return;
+    }
 
-  const handleSubmitPost = () => {
     const trimmedTitle = title.trim();
+
     if (trimmedTitle === "") {
       toast.error("Give it a title first");
       titleRef.current?.focus();
       return;
     }
 
-    const post: SavedPost = {
-      id: Date.now(),
-      boardId: board.id,
-      boardName: board.name,
-      boardInitial: board.initial,
-      author: authorName,
-      authorInitial: authorName.slice(0, 1).toLowerCase() || "y",
-      title: trimmedTitle,
-      content: content.trim(),
-      createdAt: new Date().toISOString(),
-      commentCount: 0,
-      isPreview: false,
-    };
-
-    if (!savePost(post)) {
-      toast.error("Couldn't save the post", {
-        description: "Browser storage is unavailable or full.",
-      });
+    if (!hasRichText(content)) {
+      toast.error("Write something in the body first");
       return;
     }
 
-    const author = normaliseUsername(authorName);
-    const excerpt = excerptFromHtml(post.content);
-
-    for (const mentioned of extractMentions(post.content)) {
-      if (mentioned === author) {
-        continue;
-      }
-
-      addNotification({
-        recipient: mentioned,
-        actor: author,
-        kind: "mention",
-        threadId: post.id,
-        threadTitle: post.title,
-        commentId: null,
-        excerpt,
-      });
+    if (isNewMember && !captchaToken) {
+      toast.error("Complete the CAPTCHA before posting");
+      return;
     }
 
-    toast.success("Posted!");
-    router.push(`/t/${post.id}`);
+    setSubmitting(true);
+
+    try {
+      const result = await createThread({
+        boardId,
+        title: trimmedTitle,
+        content,
+        captchaToken,
+      });
+
+      if (!result.ok) {
+        toast.error("Couldn't create the post", {
+          description: result.error,
+        });
+        captchaRef.current?.reset();
+        return;
+      }
+
+      toast.success("Posted!");
+      router.push(`/t/${result.threadId}`);
+      router.refresh();
+    } catch {
+      toast.error("Couldn't reach the server", {
+        description: "Check your connection and try again.",
+      });
+      captchaRef.current?.reset();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -227,7 +232,7 @@ function CreatePostForm({ authorName }: { authorName: string }) {
       className="mt-5 space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
-        handleSubmitPost();
+        void handleSubmitPost();
       }}
     >
       <div>
@@ -249,14 +254,14 @@ function CreatePostForm({ authorName }: { authorName: string }) {
           onChange={(event) => setTitle(event.target.value)}
           className="w-full rounded-lg border border-line bg-surface px-3 py-3 text-base font-semibold text-ink placeholder:font-normal placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-orange-700"
           placeholder="An interesting title"
-          maxLength={300}
+          maxLength={200}
           autoComplete="off"
         />
       </div>
 
       <div>
         <label htmlFor="post-body" className="mb-1 block text-xs font-medium text-muted">
-          Body <span className="font-normal text-faint">(optional)</span>
+          Body
         </label>
         <MarkdownEditor
           id="post-body"
@@ -265,9 +270,24 @@ function CreatePostForm({ authorName }: { authorName: string }) {
           onChange={setContent}
           placeholder="Say something interesting…"
           ariaLabel="Post body"
-          onSubmit={handleSubmitPost}
+          onSubmit={() => {
+            void handleSubmitPost();
+          }}
         />
       </div>
+
+      {isNewMember ? (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted">
+            New accounts complete a CAPTCHA before posting.
+          </p>
+          <TurnstileField
+            ref={captchaRef}
+            onTokenChange={setCaptchaToken}
+            onError={(message) => toast.error(message)}
+          />
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4">
         <Link
@@ -280,10 +300,11 @@ function CreatePostForm({ authorName }: { authorName: string }) {
           <p className="hidden text-[11px] text-faint sm:block">Ctrl+Enter to post</p>
           <button
             type="submit"
-            className="flex items-center gap-1.5 rounded-full bg-orange-700 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
+            disabled={submitting}
+            className="flex items-center gap-1.5 rounded-full bg-orange-700 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 disabled:cursor-wait disabled:opacity-70"
           >
             <Send className="size-4" />
-            Post
+            {submitting ? "Posting…" : "Post"}
           </button>
         </div>
       </div>
@@ -303,8 +324,8 @@ export default function CreatePostPage() {
               Create a post
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Posts and comments are saved on this device until database
-              posting is added. Use the toolbar to format text.
+              Threads are saved to the forum database and appear on every
+              device. Use the toolbar to format text.
             </p>
           </div>
 
@@ -322,7 +343,7 @@ export default function CreatePostPage() {
                 </p>
               </div>
             ) : (
-              <CreatePostForm authorName={user.username ?? "you"} />
+              <CreatePostForm isNewMember={user.role === "new_member"} />
             )
           ) : (
             <LoginGate

@@ -4,11 +4,14 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { ForumShell } from "@/components/forum-shell";
+import { isBanActive } from "@/lib/ban";
 import { usernameFromParam } from "@/lib/auth/validation";
+import type { UserRole } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 
 import { ProfileActivity } from "../profile-activity";
 import { ProfileHeader, type PublicProfile } from "../profile-header";
+import { ProfileModerationPanel } from "../profile-moderation-panel";
 
 type ProfilePageProps = {
   params: Promise<{ username: string }>;
@@ -45,6 +48,29 @@ type ProfileRow = PublicProfile & {
   onboarding_completed: boolean;
 };
 
+type ViewerModeration = {
+  role: UserRole;
+  isBanned: boolean;
+};
+
+type WarningRow = {
+  id: number;
+  reason: string;
+  created_at: string;
+  acknowledged_at: string | null;
+  moderator_username?: string | null;
+};
+
+type BanRow = {
+  id: number;
+  reason: string;
+  expires_at: string | null;
+  created_at: string;
+  lifted_at: string | null;
+  lift_reason: string | null;
+  banned_by_username?: string | null;
+};
+
 async function PublicProfileContent({ params }: ProfilePageProps) {
   const { username } = await params;
 
@@ -55,7 +81,7 @@ async function PublicProfileContent({ params }: ProfilePageProps) {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, username, avatar_url, role, is_banned, reaction_score, onboarding_completed, created_at",
+      "id, username, avatar_url, role, is_banned, banned_until, reaction_score, onboarding_completed, created_at",
     )
     .eq("username", usernameFromParam(username))
     .maybeSingle();
@@ -88,10 +114,109 @@ async function PublicProfileContent({ params }: ProfilePageProps) {
     redirect("/onboarding");
   }
 
+  let viewerModeration: ViewerModeration | null = null;
+
+  if (viewerId) {
+    const { data: viewerProfile } = await supabase
+      .from("profiles")
+      .select("role, is_banned, banned_until")
+      .eq("id", viewerId)
+      .maybeSingle();
+
+    if (viewerProfile) {
+      viewerModeration = {
+        role: viewerProfile.role,
+        isBanned: isBanActive(
+          viewerProfile.is_banned,
+          viewerProfile.banned_until,
+        ),
+      };
+    }
+  }
+
+  const viewerIsStaff = Boolean(
+    viewerModeration &&
+      !viewerModeration.isBanned &&
+      (viewerModeration.role === "moderator" ||
+        viewerModeration.role === "admin"),
+  );
+
+  let warnings: WarningRow[] = [];
+  let bans: BanRow[] = [];
+
+  if (isOwnProfile) {
+    const [warningResponse, banResponse] = await Promise.all([
+      supabase
+        .from("my_warnings")
+        .select("id, reason, created_at, acknowledged_at")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("my_bans")
+        .select("id, reason, expires_at, created_at, lifted_at, lift_reason")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+
+    warnings = (warningResponse.data ?? []) as WarningRow[];
+    bans = (banResponse.data ?? []) as BanRow[];
+  } else if (viewerIsStaff) {
+    const [warningResponse, banResponse] = await Promise.all([
+      supabase
+        .from("member_warnings")
+        .select(
+          "id, reason, created_at, acknowledged_at, moderator:profiles!member_warnings_moderator_id_fkey(username)",
+        )
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("member_bans")
+        .select(
+          "id, reason, expires_at, created_at, lifted_at, lift_reason, banned_by:profiles!member_bans_banned_by_fkey(username)",
+        )
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+
+    warnings = (
+      (warningResponse.data ?? []) as unknown as Array<
+        WarningRow & { moderator: { username: string } | null }
+      >
+    ).map((row) => ({
+      ...row,
+      moderator_username: row.moderator?.username ?? null,
+    }));
+
+    bans = (
+      (banResponse.data ?? []) as unknown as Array<
+        BanRow & { banned_by: { username: string } | null }
+      >
+    ).map((row) => ({
+      ...row,
+      banned_by_username: row.banned_by?.username ?? null,
+    }));
+  }
+
   return (
     <>
-      <ProfileHeader profile={profile} isOwnProfile={isOwnProfile} />
+      <ProfileHeader
+        profile={profile}
+        profileId={profile.id}
+        viewerId={viewerId || null}
+        isOwnProfile={isOwnProfile}
+      />
+      <ProfileModerationPanel
+        warnings={warnings}
+        bans={bans}
+        isOwnProfile={isOwnProfile}
+        isStaff={viewerIsStaff}
+      />
       <ProfileActivity
+        profileId={profile.id}
         username={profile.username}
         isOwnProfile={isOwnProfile}
       />

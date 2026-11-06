@@ -1,6 +1,26 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      graphql: {
+        Args: { extensions?: Json; operationName?: string; query?: string; variables?: Json };
+        Returns: Json;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
   public: {
     Tables: {
       boards: {
@@ -30,24 +50,36 @@ export type Database = {
       };
       invite_codes: {
         Row: {
-          code: string;
+          code_hash: string;
+          code_hint: string;
           created_at: string;
           created_by: string | null;
+          created_request_id: string | null;
+          revoked_at: string | null;
+          revoked_by: string | null;
           used_at: string | null;
           used_by: string | null;
         };
         ComputedFields: never;
         Insert: {
-          code: string;
+          code_hash: string;
+          code_hint: string;
           created_at?: string;
           created_by?: string | null;
+          created_request_id?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
           used_at?: string | null;
           used_by?: string | null;
         };
         Update: {
-          code?: string;
+          code_hash?: string;
+          code_hint?: string;
           created_at?: string;
           created_by?: string | null;
+          created_request_id?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
           used_at?: string | null;
           used_by?: string | null;
         };
@@ -60,13 +92,20 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "invite_codes_revoked_by_fkey";
+            columns: ["revoked_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "invite_codes_used_by_fkey";
             columns: ["used_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
-        ],
+        ];
       };
       media_assets: {
         Row: {
@@ -126,11 +165,239 @@ export type Database = {
           },
         ];
       };
+      member_bans: {
+        Row: {
+          banned_by: string | null;
+          created_at: string;
+          expires_at: string | null;
+          id: number;
+          lift_reason: string | null;
+          lifted_at: string | null;
+          lifted_by: string | null;
+          reason: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          banned_by?: string | null;
+          created_at?: string;
+          expires_at?: string | null;
+          id?: never;
+          lift_reason?: string | null;
+          lifted_at?: string | null;
+          lifted_by?: string | null;
+          reason: string;
+          user_id: string;
+        };
+        Update: {
+          banned_by?: string | null;
+          created_at?: string;
+          expires_at?: string | null;
+          id?: never;
+          lift_reason?: string | null;
+          lifted_at?: string | null;
+          lifted_by?: string | null;
+          reason?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_bans_banned_by_fkey";
+            columns: ["banned_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_bans_lifted_by_fkey";
+            columns: ["lifted_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_bans_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      member_warnings: {
+        Row: {
+          acknowledged_at: string | null;
+          created_at: string;
+          id: number;
+          moderator_id: string | null;
+          reason: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          acknowledged_at?: string | null;
+          created_at?: string;
+          id?: never;
+          moderator_id?: string | null;
+          reason: string;
+          user_id: string;
+        };
+        Update: {
+          acknowledged_at?: string | null;
+          created_at?: string;
+          id?: never;
+          moderator_id?: string | null;
+          reason?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_warnings_moderator_id_fkey";
+            columns: ["moderator_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_warnings_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      mod_log: {
+        Row: {
+          action: Database["public"]["Enums"]["mod_action"];
+          actor_id: string | null;
+          actor_username: string;
+          created_at: string;
+          id: number;
+          new_value: NonNullable<Json>;
+          previous_value: NonNullable<Json>;
+          reason: string;
+          target_id: string;
+          target_label: string;
+          target_type: Database["public"]["Enums"]["mod_target_type"];
+        };
+        ComputedFields: never;
+        Insert: {
+          action: Database["public"]["Enums"]["mod_action"];
+          actor_id?: string | null;
+          actor_username: string;
+          created_at?: string;
+          id?: never;
+          new_value?: NonNullable<Json>;
+          previous_value?: NonNullable<Json>;
+          reason: string;
+          target_id: string;
+          target_label?: string;
+          target_type: Database["public"]["Enums"]["mod_target_type"];
+        };
+        Update: {
+          action?: Database["public"]["Enums"]["mod_action"];
+          actor_id?: string | null;
+          actor_username?: string;
+          created_at?: string;
+          id?: never;
+          new_value?: NonNullable<Json>;
+          previous_value?: NonNullable<Json>;
+          reason?: string;
+          target_id?: string;
+          target_label?: string;
+          target_type?: Database["public"]["Enums"]["mod_target_type"];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "mod_log_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notifications: {
+        Row: {
+          actor_id: string | null;
+          actor_username: string;
+          created_at: string;
+          excerpt: string;
+          id: number;
+          kind: Database["public"]["Enums"]["notification_kind"];
+          post_id: number;
+          read_at: string | null;
+          thread_id: number;
+          thread_title: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          actor_id?: string | null;
+          actor_username: string;
+          created_at?: string;
+          excerpt?: string;
+          id?: never;
+          kind: Database["public"]["Enums"]["notification_kind"];
+          post_id: number;
+          read_at?: string | null;
+          thread_id: number;
+          thread_title: string;
+          user_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          actor_username?: string;
+          created_at?: string;
+          excerpt?: string;
+          id?: never;
+          kind?: Database["public"]["Enums"]["notification_kind"];
+          post_id?: number;
+          read_at?: string | null;
+          thread_id?: number;
+          thread_title?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_thread_id_fkey";
+            columns: ["thread_id"];
+            isOneToOne: false;
+            referencedRelation: "threads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       posts: {
         Row: {
           author_id: string | null;
           content: string;
           created_at: string;
+          deleted_at: string | null;
+          deleted_by: string | null;
+          deleted_reason: string | null;
           edited_at: string | null;
           id: number;
           is_deleted: boolean;
@@ -143,6 +410,9 @@ export type Database = {
           author_id?: string | null;
           content: string;
           created_at?: string;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+          deleted_reason?: string | null;
           edited_at?: string | null;
           id?: never;
           is_deleted?: boolean;
@@ -154,6 +424,9 @@ export type Database = {
           author_id?: string | null;
           content?: string;
           created_at?: string;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+          deleted_reason?: string | null;
           edited_at?: string | null;
           id?: never;
           is_deleted?: boolean;
@@ -165,6 +438,13 @@ export type Database = {
           {
             foreignKeyName: "posts_author_id_fkey";
             columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "posts_deleted_by_fkey";
+            columns: ["deleted_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -188,6 +468,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null;
+          banned_until: string | null;
           created_at: string;
           id: string;
           is_banned: boolean;
@@ -199,6 +480,7 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           avatar_url?: string | null;
+          banned_until?: string | null;
           created_at?: string;
           id: string;
           is_banned?: boolean;
@@ -209,6 +491,7 @@ export type Database = {
         };
         Update: {
           avatar_url?: string | null;
+          banned_until?: string | null;
           created_at?: string;
           id?: string;
           is_banned?: boolean;
@@ -259,31 +542,84 @@ export type Database = {
           },
         ];
       };
+      report_resolutions: {
+        Row: {
+          created_at: string;
+          mod_log_id: number;
+          report_id: number;
+          resolution_note: string;
+          resolved_by: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          mod_log_id: number;
+          report_id: number;
+          resolution_note: string;
+          resolved_by?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          mod_log_id?: number;
+          report_id?: number;
+          resolution_note?: string;
+          resolved_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "report_resolutions_mod_log_id_fkey";
+            columns: ["mod_log_id"];
+            isOneToOne: false;
+            referencedRelation: "mod_log";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "report_resolutions_report_id_fkey";
+            columns: ["report_id"];
+            isOneToOne: true;
+            referencedRelation: "reports";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "report_resolutions_resolved_by_fkey";
+            columns: ["resolved_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       reports: {
         Row: {
           created_at: string;
           id: number;
-          post_id: number;
+          post_id: number | null;
           reason: string;
           reporter_id: string | null;
           status: Database["public"]["Enums"]["report_status"];
+          target_type: Database["public"]["Enums"]["report_target_type"];
+          target_user_id: string | null;
         };
         ComputedFields: never;
         Insert: {
           created_at?: string;
           id?: never;
-          post_id: number;
+          post_id?: number | null;
           reason: string;
           reporter_id?: string | null;
           status?: Database["public"]["Enums"]["report_status"];
+          target_type?: Database["public"]["Enums"]["report_target_type"];
+          target_user_id?: string | null;
         };
         Update: {
           created_at?: string;
           id?: never;
-          post_id?: number;
+          post_id?: number | null;
           reason?: string;
           reporter_id?: string | null;
           status?: Database["public"]["Enums"]["report_status"];
+          target_type?: Database["public"]["Enums"]["report_target_type"];
+          target_user_id?: string | null;
         };
         Relationships: [
           {
@@ -300,6 +636,13 @@ export type Database = {
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "reports_target_user_id_fkey";
+            columns: ["target_user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
         ];
       };
       security_events: {
@@ -307,8 +650,8 @@ export type Database = {
           created_at: string;
           event: string;
           id: number;
-          ip: string | null;
-          metadata: Json;
+          ip: unknown;
+          metadata: NonNullable<Json>;
           user_agent: string | null;
           user_id: string | null;
         };
@@ -317,8 +660,8 @@ export type Database = {
           created_at?: string;
           event: string;
           id?: never;
-          ip?: string | null;
-          metadata?: Json;
+          ip?: unknown;
+          metadata?: NonNullable<Json>;
           user_agent?: string | null;
           user_id?: string | null;
         };
@@ -326,8 +669,8 @@ export type Database = {
           created_at?: string;
           event?: string;
           id?: never;
-          ip?: string | null;
-          metadata?: Json;
+          ip?: unknown;
+          metadata?: NonNullable<Json>;
           user_agent?: string | null;
           user_id?: string | null;
         };
@@ -338,11 +681,15 @@ export type Database = {
           author_id: string | null;
           board_id: string;
           created_at: string;
+          deleted_at: string | null;
+          deleted_by: string | null;
+          deleted_reason: string | null;
           id: number;
           is_deleted: boolean;
           is_locked: boolean;
           is_pinned: boolean;
           last_post_at: string;
+          reply_count: number;
           title: string;
         };
         ComputedFields: never;
@@ -350,22 +697,30 @@ export type Database = {
           author_id?: string | null;
           board_id: string;
           created_at?: string;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+          deleted_reason?: string | null;
           id?: never;
           is_deleted?: boolean;
           is_locked?: boolean;
           is_pinned?: boolean;
           last_post_at?: string;
+          reply_count?: number;
           title: string;
         };
         Update: {
           author_id?: string | null;
           board_id?: string;
           created_at?: string;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+          deleted_reason?: string | null;
           id?: never;
           is_deleted?: boolean;
           is_locked?: boolean;
           is_pinned?: boolean;
           last_post_at?: string;
+          reply_count?: number;
           title?: string;
         };
         Relationships: [
@@ -383,32 +738,298 @@ export type Database = {
             referencedRelation: "boards";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "threads_deleted_by_fkey";
+            columns: ["deleted_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
         ];
       };
     };
     Views: {
-      [_ in never]: never;
+      my_bans: {
+        Row: {
+          created_at: string;
+          expires_at: string | null;
+          id: number;
+          lift_reason: string | null;
+          lifted_at: string | null;
+          reason: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string | null;
+          expires_at?: string | null;
+          id?: number | null;
+          lift_reason?: string | null;
+          lifted_at?: string | null;
+          reason?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string | null;
+          expires_at?: string | null;
+          id?: number | null;
+          lift_reason?: string | null;
+          lifted_at?: string | null;
+          reason?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_bans_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      my_warnings: {
+        Row: {
+          acknowledged_at: string | null;
+          created_at: string;
+          id: number;
+          reason: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          acknowledged_at?: string | null;
+          created_at?: string | null;
+          id?: number | null;
+          reason?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          acknowledged_at?: string | null;
+          created_at?: string | null;
+          id?: number | null;
+          reason?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_warnings_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Functions: {
-      consume_invite_code: {
-        Args: { p_code: string };
-        Returns: boolean;
+      acknowledge_warning: { Args: { p_warning_id: number }; Returns: boolean };
+      admin_create_invite_codes: {
+        Args: { p_count: number; p_reason: string; p_request_id?: string };
+        Returns: {
+          batch_id: string;
+          code: string;
+          code_hash: string;
+          code_hint: string;
+        }[];
+      };
+      admin_list_invite_codes: {
+        Args: { p_limit?: number };
+        Returns: {
+          code_hash: string;
+          code_hint: string;
+          created_at: string;
+          created_by_username: string;
+          revoked_at: string;
+          revoked_by_username: string;
+          status: string;
+          used_at: string;
+          used_by_username: string;
+        }[];
+      };
+      admin_revoke_invite_code: {
+        Args: { p_code_hash: string; p_reason: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      admin_set_role: {
+        Args: {
+          p_reason: string;
+          p_role: Database["public"]["Enums"]["user_role"];
+          p_target_id: string;
+        };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      consume_invite_code: { Args: { p_code: string }; Returns: boolean };
+      create_thread: {
+        Args: { p_board_id: string; p_content: string; p_title: string };
+        Returns: {
+          post_id: number;
+          thread_id: number;
+        }[];
       };
       is_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_banned: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_moderator: { Args: Record<PropertyKey, never>; Returns: boolean };
-      promote_member_roles: {
-        Args: Record<PropertyKey, never>;
-        Returns: number;
+      list_thread_comments: {
+        Args: { p_after_at?: string; p_after_id?: number; p_limit?: number; p_thread_id: number };
+        Returns: {
+          author_id: string;
+          author_username: string;
+          content: string;
+          created_at: string;
+          deleted_by_username: string;
+          deleted_reason: string;
+          id: number;
+          is_deleted: boolean;
+          reply_to_author_username: string;
+          reply_to_post_id: number;
+        }[];
       };
+      list_threads: {
+        Args: {
+          p_before_at?: string;
+          p_before_id?: number;
+          p_board_id?: string;
+          p_limit?: number;
+          p_pinned?: boolean;
+          p_sort?: string;
+        };
+        Returns: {
+          author_id: string;
+          author_username: string;
+          board_id: string;
+          board_name: string;
+          created_at: string;
+          id: number;
+          is_locked: boolean;
+          is_pinned: boolean;
+          last_post_at: string;
+          reply_count: number;
+          title: string;
+        }[];
+      };
+      moderate_ban_user: {
+        Args: { p_reason: string; p_target_id: string; p_until?: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_move_thread: {
+        Args: { p_board_id: string; p_reason: string; p_thread_id: number };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_set_post_deleted: {
+        Args: { p_deleted: boolean; p_post_id: number; p_reason: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_set_thread_deleted: {
+        Args: { p_deleted: boolean; p_reason: string; p_thread_id: number };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_set_thread_locked: {
+        Args: { p_locked: boolean; p_reason: string; p_thread_id: number };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_set_thread_pinned: {
+        Args: { p_pinned: boolean; p_reason: string; p_thread_id: number };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_unban_user: {
+        Args: { p_reason: string; p_target_id: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_warn_user: {
+        Args: { p_reason: string; p_target_id: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+          warning_id: number;
+        }[];
+      };
+      post_reaction_summary: {
+        Args: { p_post_ids: number[] };
+        Returns: {
+          kind: Database["public"]["Enums"]["reaction_kind"];
+          mine: boolean;
+          post_id: number;
+          total: number;
+        }[];
+      };
+      promote_member_roles: { Args: Record<PropertyKey, never>; Returns: number };
       recompute_reaction_score: { Args: { target_profile: string }; Returns: undefined };
       resolve_login_email: { Args: { lookup_username: string }; Returns: string };
+      staff_resolve_report: {
+        Args: {
+          p_note: string;
+          p_report_id: number;
+          p_status: Database["public"]["Enums"]["report_status"];
+        };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      thread_reaction_summary: {
+        Args: { p_thread_id: number };
+        Returns: {
+          kind: Database["public"]["Enums"]["reaction_kind"];
+          mine: boolean;
+          post_id: number;
+          total: number;
+        }[];
+      };
     };
     Enums: {
       media_kind: "image" | "video" | "audio";
       media_status: "active" | "removed";
+      mod_action:
+        | "post.delete"
+        | "post.restore"
+        | "thread.delete"
+        | "thread.restore"
+        | "thread.lock"
+        | "thread.unlock"
+        | "thread.pin"
+        | "thread.unpin"
+        | "thread.move"
+        | "user.ban"
+        | "user.unban"
+        | "user.warn"
+        | "role.change"
+        | "report.resolve"
+        | "report.dismiss"
+        | "invite.create"
+        | "invite.revoke";
+      mod_target_type: "post" | "thread" | "user" | "report" | "invite";
+      notification_kind: "reply" | "quote" | "mention";
       reaction_kind: "like" | "laugh" | "wow" | "anger" | "dislike";
       report_status: "open" | "resolved" | "dismissed";
+      report_target_type: "post" | "user";
       user_role: "new_member" | "member" | "senior_member" | "moderator" | "admin";
     };
     CompositeTypes: {
@@ -523,12 +1144,37 @@ export type CompositeTypes<
     : never;
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       media_kind: ["image", "video", "audio"],
       media_status: ["active", "removed"],
+      mod_action: [
+        "post.delete",
+        "post.restore",
+        "thread.delete",
+        "thread.restore",
+        "thread.lock",
+        "thread.unlock",
+        "thread.pin",
+        "thread.unpin",
+        "thread.move",
+        "user.ban",
+        "user.unban",
+        "user.warn",
+        "role.change",
+        "report.resolve",
+        "report.dismiss",
+        "invite.create",
+        "invite.revoke",
+      ],
+      mod_target_type: ["post", "thread", "user", "report", "invite"],
+      notification_kind: ["reply", "quote", "mention"],
       reaction_kind: ["like", "laugh", "wow", "anger", "dislike"],
       report_status: ["open", "resolved", "dismissed"],
+      report_target_type: ["post", "user"],
       user_role: ["new_member", "member", "senior_member", "moderator", "admin"],
     },
   },

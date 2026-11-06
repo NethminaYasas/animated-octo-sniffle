@@ -4,18 +4,16 @@ import { useEffect, useState } from "react";
 import { Share2, Bookmark } from "lucide-react";
 import { toast } from "sonner";
 
-import { loadSavedIds, setSavedId } from "@/lib/feed-store";
+import { loadSavedIds, setSavedId } from "@/lib/bookmarks";
 
 export function PostActions({
   postId,
   title,
   body,
-  username,
 }: {
   postId: number;
   title: string;
   body: string;
-  username?: string | null;
 }) {
   const [saved, setSaved] = useState(false);
 
@@ -52,14 +50,16 @@ export function PostActions({
   const handleSave = () => {
     const next = !saved;
     setSaved(next);
-    if (!setSavedId(postId, next, username)) {
-      setSaved(saved); // roll back when storage is unavailable
+
+    if (!setSavedId(postId, next)) {
+      setSaved(saved);
       toast.error("Couldn't update saved posts", {
         description: "Browser storage is unavailable or full.",
       });
       return;
     }
-    toast.success(next ? "Saved for later" : "Removed from saved");
+
+    toast.success(next ? "Saved on this device" : "Removed from saved");
   };
 
   return (
@@ -78,15 +78,19 @@ export function PostActions({
         type="button"
         aria-label={saved ? "Remove from saved" : "Save post"}
         aria-pressed={saved}
-        title={saved ? "Remove from saved" : "Save"}
+        title={saved ? "Remove from saved" : "Save on this device"}
         onClick={handleSave}
         className={`flex items-center gap-1 transition-colors ${
-          saved ? "text-orange-700 dark:text-orange-400" : "hover:text-ink dark:hover:text-ink"
+          saved
+            ? "text-orange-700 dark:text-orange-400"
+            : "hover:text-ink dark:hover:text-ink"
         }`}
       >
         <Bookmark
           className={`size-3.5 ${
-            saved ? "fill-orange-700 text-orange-700 dark:fill-orange-400 dark:text-orange-400" : ""
+            saved
+              ? "fill-orange-700 text-orange-700 dark:fill-orange-400 dark:text-orange-400"
+              : ""
           }`}
         />
         {saved ? "Saved" : "Save"}

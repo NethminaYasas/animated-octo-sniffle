@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { isBanActive } from "@/lib/ban";
 import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/roles";
 
@@ -13,6 +14,7 @@ export type AuthUser = {
   username: string | null;
   role: UserRole;
   isBanned: boolean;
+  bannedUntil: string | null;
 };
 
 /**
@@ -52,19 +54,25 @@ export function useAuthUser() {
                 username: null,
                 role: "new_member",
                 isBanned: false,
+                bannedUntil: null,
               },
         );
         setLoading(false);
 
         supabase
           .from("profiles")
-          .select("username, role, is_banned")
+          .select("username, role, is_banned, banned_until")
           .eq("id", authUser.id)
           .maybeSingle()
           .then(({ data }) => {
             if (!active || !data) {
               return;
             }
+
+            const isBanned = isBanActive(
+              data.is_banned,
+              data.banned_until,
+            );
 
             setUser((current) => {
               if (!current || current.id !== authUser.id) {
@@ -74,7 +82,8 @@ export function useAuthUser() {
               if (
                 current.username === data.username &&
                 current.role === data.role &&
-                current.isBanned === data.is_banned
+                current.isBanned === isBanned &&
+                current.bannedUntil === data.banned_until
               ) {
                 return current;
               }
@@ -83,7 +92,8 @@ export function useAuthUser() {
                 ...current,
                 username: data.username,
                 role: data.role,
-                isBanned: data.is_banned,
+                isBanned,
+                bannedUntil: data.banned_until,
               };
             });
           });

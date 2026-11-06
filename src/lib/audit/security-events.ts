@@ -13,6 +13,7 @@ export const SECURITY_EVENTS = [
   "password_reset.requested",
   "oauth.succeeded",
   "oauth.failed",
+  "forum.rate_limited",
 ] as const;
 
 export type SecurityEventName = (typeof SECURITY_EVENTS)[number];

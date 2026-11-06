@@ -4,12 +4,14 @@ kaluwo is a Sri Lankan discussion forum in the style of
 [elakiri.com](https://elakiri.com). The repo is public: no real secrets, IPs,
 keys or personal data may be committed.
 
-**Current status:** Step 1 (project initialization) is complete. The database
-schema, RLS policies and authentication are built in the repository. The
-migrations in `supabase/migrations/` still have to be applied to the Supabase
-project. Posting to the database, moderation, uploads and the live forum are
-still to be built. The local prototype already covers posting, comments,
-reactions, quotes, mentions and notifications in the browser.
+**Current status:** Authentication, the database schema, Phase 1
+(database-backed posting, comments, reactions, notifications, cursor
+pagination and posting rate limits) and Phase 2 (roles, moderation, mod log,
+reports, hashed invite administration, warnings and comment pagination) are
+built in the repository. The migrations in `supabase/migrations/` still have
+to be applied to the Supabase project. Uploads, modmail and end-to-end
+encrypted DMs are the next phases. Quotes remain a browser-local clipboard;
+saved posts remain a browser-local bookmark.
 
 ## 1. What kaluwo is
 
@@ -369,8 +371,8 @@ Apply these to every task.
   without a session. They show only the username, stored avatar, role, status,
   joined date and reaction score. The member's email address and Google photo
   are never displayed; Google is only used to verify the account.
-- Profile activity is read from the local prototype stores (posts, comments and
-  reactions) until posting is database-backed.
+- Profile activity is read from Supabase: the member's threads, comments and
+  reactions, with soft-deleted content excluded by RLS and the queries.
 - Email/password confirmation is not used. `/auth/callback` exchanges the
   Google OAuth code and redirects new accounts to `/onboarding`. `/auth/confirm`
   still supports `token_hash` password-reset links if the email template is
@@ -475,3 +477,88 @@ Apply these to every task.
   a username to the account's real or internal email, then
   `signInWithPassword()` verifies it. Both account types can therefore log in
   with a username and password, and Google accounts can also use Google.
+
+## Implementation decisions (Phase 1: database-backed forum)
+
+- Threads, comments (`posts`), reactions and notifications are stored in
+  Supabase. The old `feed-store.ts` and `seed-posts.ts` browser prototype files
+  were removed.
+- `create_thread()` is `SECURITY INVOKER`; it inserts the thread and opening
+  post in one transaction under the caller's RLS policies. A failed opening
+  post rolls the thread back.
+- Direct post inserts are comments only. The opening-post branch accepts an
+  insert only in the author's own thread when `thread_has_no_posts()` is true.
+  `thread_has_no_posts` and `thread_has_opening_post` live in the
+  non-exposed `kaluwo_private` schema.
+- Threads with no active opening post are hidden by `list_threads` and the
+  thread page, even if a client inserted the thread row directly.
+- The feed uses cursor pagination on `(last_post_at, id)` or
+  `(created_at, id)`; it never uses `OFFSET`.
+- Rate limits are enforced by `BEFORE INSERT` triggers using atomic
+  `INSERT ... ON CONFLICT ... WHERE used < limit` counters. The trigger raises
+  with `hint = 'kaluwo_rate_limited'`; server actions log
+  `forum.rate_limited` in `security_events`. Direct API rejections are not
+  audited because the `RAISE` rolls back the audit insert.
+- Notifications are created by the server action with the service role.
+  Recipients are resolved from database rows only, and self-notifications are
+  skipped. The table has no INSERT policy.
+- Notifications are delivered through Supabase Realtime with a 60-second poll
+  fallback. The browser subscribes with a `user_id` filter; RLS also scopes
+  INSERT/UPDATE rows, and the filter is required because Realtime cannot apply
+  RLS to DELETE payloads. Soft-deleting a post or its thread clears the
+  relevant notification excerpts and replaces a deleted thread's title snapshot.
+- Reaction totals are aggregated by `thread_reaction_summary()` in the
+  database, so a busy thread is not truncated by PostgREST's `max_rows`.
+- Post/comment HTML is sanitised with `sanitize-html` before storage, and the
+  existing `rehype-sanitize` renderer remains the authoritative display gate.
+- Direct PostgREST inserts are still blocked by RLS (authentication, ban,
+  thread state and own-content rules) and by the rate-limit triggers, but they
+  bypass Turnstile, the pre-storage `sanitize-html` pass and the application's
+  content length check. The database length constraints and the render-time
+  sanitizer still apply. This is accepted under the chosen RLS-based insert
+  design; a future migration can move writes behind a service-role-only RPC.
+- Turnstile is required for `new_member` thread/comment creation; established
+  members are protected by rate limits.
+- Search is a simple `ILIKE` query in this phase, with LIKE wildcard escaping.
+  Saved posts remain a browser-local bookmark, and quotes remain a
+  browser-local clipboard.
+
+## Implementation decisions (Phase 2: moderation)
+
+- Roles live in `profiles.role`; effective staff checks read the database on
+  every RLS/RPC call. JWT claims are never used for authorisation. A demotion or
+  effective ban takes effect on the next request.
+- Bans are `is_banned` plus an optional `banned_until`. `is_banned()` compares
+  the expiry to `now()` at check time, so expiry needs no cron. Expired bans
+  may leave the flag true until a formal unban.
+- Member-facing ban and warning data use `my_bans` / `my_warnings` views that
+  show the reason and expiry but omit the issuing moderator. Staff read the
+  base tables.
+- Every staff write is a `SECURITY DEFINER` RPC with pinned `search_path`,
+  EXECUTE revoked from public/anon, and an actor/role read from the database.
+  Direct staff UPDATE/DELETE on profiles, threads, posts, reports and moderation
+  tables is revoked so the append-only mod log cannot be bypassed.
+- Moderators cannot act on admins or other moderators. Admins cannot be banned.
+  `admin_set_role` and the ban/unban RPCs take the same transaction-scoped
+  advisory lock and re-check the caller after acquiring it; concurrent
+  demotions cannot leave zero admins.
+- `mod_log` is append-only through the API. It records reason, previous value
+  and new value. Move actions record both old and new board ids.
+- Soft-deleted threads/posts are visible only to staff, with deleted reason,
+  actor and timestamp. Members (including authors) do not see them. The Phase 1
+  reply-count, last-activity and notification-clearing triggers still fire when
+  the RPC updates `is_deleted`.
+- Comments are cursor-paginated oldest-first with "Load more comments".
+  Notification links auto-load forward until the target comment is present.
+  Reaction summaries are aggregated per loaded page in the database.
+- Pinned threads are shown in a separate pinned section; the main feed cursor
+  excludes pinned threads, so pin/unpin cannot corrupt mid-pagination results.
+- Reports support post/comment and member targets, one open report per reporter
+  per target, a per-member rate limit, a staff-only resolution row and an
+  admin-only rule for reports about staff. Reporters never see other reporters
+  or the handler.
+- Invite codes are generated with pgcrypto, stored as SHA-256 hashes plus a
+  six-character hint, and shown in plaintext only once at creation. Revocation
+  and idempotent batch creation are admin RPCs.
+- Warnings are stored in `member_warnings`, shown on the member profile with an
+  acknowledge action, and do not create a bell notification in Phase 2.

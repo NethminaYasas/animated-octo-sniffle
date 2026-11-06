@@ -8,14 +8,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { normaliseUsername } from "@/lib/auth/validation";
 import {
   REACTION_KINDS,
-  setReaction,
-  useReactions,
+  reactionTotal,
+  type ReactionCounts,
   type ReactionKind,
-  type ReactionTargetType,
 } from "@/lib/reactions";
+import { useReactions } from "@/lib/use-reactions";
 
 const REACTION_META: Record<
   ReactionKind,
@@ -34,29 +33,34 @@ const LONG_PRESS_MS = 350;
  * One primary Like button. Hovering (mouse) or long-pressing (touch) opens the
  * emoji picker; a plain click/tap likes the post or comment.
  *
- * Reactions are only offered on other members' content.
+ * Reactions are only offered to signed-in members on other members' content.
+ * Banned members can still react; the RLS policy intentionally allows it.
  */
 export function ReactionBar({
-  targetType,
-  targetId,
-  author,
-  currentUsername,
+  postId,
+  authorId,
+  currentUserId,
+  initialCounts,
+  initialMine,
 }: {
-  targetType: ReactionTargetType;
-  targetId: number;
-  author: string;
-  currentUsername: string | null;
+  postId: number;
+  authorId: string | null;
+  currentUserId: string | null;
+  initialCounts: ReactionCounts;
+  initialMine: ReactionKind | null;
 }) {
-  const reactions = useReactions(targetType, targetId);
-  const userKey = currentUsername ? normaliseUsername(currentUsername) : null;
-  const isOwn = userKey !== null && userKey === normaliseUsername(author);
+  const { counts, mine, pending, save } = useReactions(
+    postId,
+    initialCounts,
+    initialMine,
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const pressTimerRef = useRef<number | null>(null);
   const longPressRef = useRef(false);
 
-  const mine = userKey ? (reactions[userKey] ?? null) : null;
+  const isOwn = currentUserId !== null && authorId === currentUserId;
 
   useEffect(() => {
     if (!pickerOpen) {
@@ -96,27 +100,29 @@ export function ReactionBar({
     };
   }, []);
 
-  if (!userKey || isOwn) {
+  if (!currentUserId || isOwn) {
     return null;
   }
 
-  const total = Object.keys(reactions).length;
+  const total = reactionTotal(counts);
   const current = mine ? REACTION_META[mine] : null;
 
-  const save = (kind: ReactionKind | null) => {
-    if (!setReaction(targetType, targetId, userKey, kind)) {
+  const saveReaction = async (kind: ReactionKind | null) => {
+    const error = await save(kind);
+
+    if (error) {
       toast.error("Couldn't save your reaction", {
-        description: "Browser storage is unavailable or full.",
+        description: error,
       });
     }
   };
 
   const handleLike = () => {
-    save(mine === "like" ? null : "like");
+    void saveReaction(mine === "like" ? null : "like");
   };
 
   const handlePick = (kind: ReactionKind) => {
-    save(mine === kind ? null : kind);
+    void saveReaction(mine === kind ? null : kind);
     setPickerOpen(false);
     longPressRef.current = false;
   };
@@ -195,9 +201,7 @@ export function ReactionBar({
         >
           {REACTION_KINDS.map((kind) => {
             const { emoji, label } = REACTION_META[kind];
-            const count = Object.values(reactions).filter(
-              (reaction) => reaction === kind,
-            ).length;
+            const count = counts[kind];
             const selected = mine === kind;
 
             return (
@@ -207,8 +211,9 @@ export function ReactionBar({
                 role="menuitem"
                 aria-label={`${label}${count > 0 ? `, ${count}` : ""}`}
                 title={label}
+                disabled={pending}
                 onClick={() => handlePick(kind)}
-                className={`relative grid size-8 select-none place-items-center rounded-full text-lg leading-none transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${
+                className={`relative grid size-8 select-none place-items-center rounded-full text-lg leading-none transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 disabled:cursor-wait disabled:opacity-70 ${
                   selected ? "bg-orange-50 dark:bg-orange-950/40" : ""
                 }`}
               >
@@ -241,6 +246,7 @@ export function ReactionBar({
             openPicker();
           }
         }}
+        disabled={pending}
         aria-pressed={mine === "like"}
         aria-haspopup="menu"
         aria-expanded={pickerOpen}
@@ -250,7 +256,7 @@ export function ReactionBar({
             : "Like"
         }
         title="Click to like. Hover or hold for more reactions."
-        className={`flex touch-manipulation select-none items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
+        className={`flex touch-manipulation select-none items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
           current
             ? "border-orange-700 bg-orange-50 text-orange-800 dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-300"
             : "border-line text-muted hover:bg-surface-muted hover:text-ink"

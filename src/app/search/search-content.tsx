@@ -2,38 +2,44 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { MessageSquare, Search as SearchIcon, X } from "lucide-react";
 
 import { ForumShell } from "@/components/forum-shell";
 import { BOARDS } from "@/lib/boards";
-import {
-  FEED_CHANGED_EVENT,
-  loadComments,
-  loadDeletedPostIds,
-  loadPosts,
-  type SavedComment,
-  type SavedPost,
-} from "@/lib/feed-store";
 import { htmlToText } from "@/lib/mentions";
-import { SEED_POSTS } from "@/lib/seed-posts";
+import { createClient } from "@/lib/supabase/client";
 import { formatRelativeTime } from "@/lib/time";
 
-type PostEntry = { post: SavedPost; text: string };
-type CommentEntry = { comment: SavedComment; post: SavedPost; text: string };
-
-type Index = {
-  posts: PostEntry[];
-  comments: CommentEntry[];
+type ThreadResult = {
+  id: number;
+  title: string;
+  boardId: string;
+  boardName: string;
+  author: string;
+  createdAt: string;
 };
 
-const EMPTY_INDEX: Index = { posts: [], comments: [] };
+type CommentResult = {
+  id: number;
+  threadId: number;
+  threadTitle: string;
+  boardId: string;
+  boardName: string;
+  author: string;
+  createdAt: string;
+  text: string;
+};
+
+const MIN_QUERY_LENGTH = 2;
+
+/** Escapes PostgreSQL LIKE wildcards so a literal % does not match everything. */
+function escapeLikePattern(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+}
 
 /** A window of text around the first match, so long posts stay readable. */
 function makeExcerpt(text: string, term: string): string {
@@ -99,38 +105,13 @@ function Highlight({ text, term }: { text: string; term: string }) {
 export function SearchContent({ initialQuery }: { initialQuery: string }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
-  const [index, setIndex] = useState<Index>(EMPTY_INDEX);
+  const [threads, setThreads] = useState<ThreadResult[]>([]);
+  const [comments, setComments] = useState<CommentResult[]>([]);
   const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [settledTerm, setSettledTerm] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<Date | null>(null);
-
-  useEffect(() => {
-    const build = () => {
-      const deleted = new Set(loadDeletedPostIds());
-      const posts = [...SEED_POSTS, ...loadPosts()].filter(
-        (post) => !deleted.has(post.id),
-      );
-
-      setIndex({
-        posts: posts.map((post) => ({
-          post,
-          text: htmlToText(post.content),
-        })),
-        comments: posts.flatMap((post) =>
-          loadComments(post.id).map((comment) => ({
-            comment,
-            post,
-            text: htmlToText(comment.body),
-          })),
-        ),
-      });
-      setReady(true);
-    };
-
-    build();
-    window.addEventListener(FEED_CHANGED_EVENT, build);
-
-    return () => window.removeEventListener(FEED_CHANGED_EVENT, build);
-  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- relative times need the client clock
@@ -145,47 +126,134 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
 
   const term = query.trim().toLowerCase();
 
-  const results = useMemo(() => {
-    if (!term) {
-      return { posts: [], comments: [] };
+  useEffect(() => {
+    if (term.length < MIN_QUERY_LENGTH) {
+      const resetTimer = window.setTimeout(() => {
+        setThreads([]);
+        setComments([]);
+        setReady(true);
+        setLoading(false);
+        setSettledTerm(null);
+        setError(null);
+      }, 0);
+
+      return () => window.clearTimeout(resetTimer);
     }
 
-    const matches = (value: string) => value.toLowerCase().includes(term);
+    let active = true;
 
-    return {
-      posts: index.posts
-        .filter(
-          ({ post, text }) =>
-            matches(post.title) ||
-            matches(text) ||
-            matches(post.author) ||
-            matches(post.boardName),
-        )
-        .map((entry) => ({
-          ...entry,
-          rank: matches(entry.post.title)
-            ? 2
-            : matches(entry.text)
-              ? 1
-              : 0,
-        }))
-        .sort(
-          (a, b) =>
-            b.rank - a.rank ||
-            new Date(b.post.createdAt).getTime() -
-              new Date(a.post.createdAt).getTime(),
-        ),
-      comments: index.comments
-        .filter(
-          ({ comment, text }) => matches(text) || matches(comment.author),
-        )
-        .sort(
-          (a, b) =>
-            new Date(b.comment.createdAt).getTime() -
-            new Date(a.comment.createdAt).getTime(),
-        ),
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      setReady(false);
+
+      void (async () => {
+        try {
+          const supabase = createClient();
+          const pattern = `%${escapeLikePattern(term)}%`;
+
+          const [threadResponse, commentResponse] = await Promise.all([
+            supabase
+              .from("threads")
+              .select(
+                "id, title, board_id, created_at, author:profiles!threads_author_id_fkey(username), board:boards!threads_board_id_fkey(name)",
+              )
+              .eq("is_deleted", false)
+              .ilike("title", pattern)
+              .order("last_post_at", { ascending: false })
+              .limit(20),
+            supabase
+              .from("posts")
+              .select(
+                "id, content, created_at, thread_id, author:profiles!posts_author_id_fkey(username), thread:threads!posts_thread_id_fkey(id, title, board_id, is_deleted, board:boards!threads_board_id_fkey(name))",
+              )
+              .eq("is_deleted", false)
+              .ilike("content", pattern)
+              .order("created_at", { ascending: false })
+              .limit(30),
+          ]);
+
+          if (!active) {
+            return;
+          }
+
+          if (threadResponse.error || commentResponse.error) {
+            setError("Search is unavailable right now. Try again shortly.");
+            setThreads([]);
+            setComments([]);
+            return;
+          }
+
+          const threadRows = (threadResponse.data ?? []) as unknown as Array<{
+            id: number;
+            title: string;
+            board_id: string;
+            created_at: string;
+            author: { username: string } | null;
+            board: { name: string } | null;
+          }>;
+
+          const commentRows = (commentResponse.data ?? []) as unknown as Array<{
+            id: number;
+            content: string;
+            created_at: string;
+            thread_id: number;
+            author: { username: string } | null;
+            thread: {
+              id: number;
+              title: string;
+              board_id: string;
+              is_deleted: boolean;
+              board: { name: string } | null;
+            } | null;
+          }>;
+
+          setThreads(
+            threadRows.map((row) => ({
+              id: row.id,
+              title: row.title,
+              boardId: row.board_id,
+              boardName: row.board?.name ?? "Board",
+              author: row.author?.username ?? "unknown",
+              createdAt: row.created_at,
+            })),
+          );
+
+          setComments(
+            commentRows
+              .filter((row) => row.thread && !row.thread.is_deleted)
+              .map((row) => ({
+                id: row.id,
+                threadId: row.thread_id,
+                threadTitle: row.thread?.title ?? "Thread",
+                boardId: row.thread?.board_id ?? "",
+                boardName: row.thread?.board?.name ?? "Board",
+                author: row.author?.username ?? "unknown",
+                createdAt: row.created_at,
+                text: htmlToText(row.content),
+              })),
+          );
+        } catch {
+          if (active) {
+            setError("Search is unavailable right now. Try again shortly.");
+            setThreads([]);
+            setComments([]);
+          }
+        } finally {
+          if (active) {
+            setReady(true);
+            setLoading(false);
+            setSettledTerm(term);
+          }
+        }
+      })();
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
     };
-  }, [index, term]);
+  }, [term]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -193,23 +261,17 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
     router.replace(next ? `/search?q=${encodeURIComponent(next)}` : "/search");
   };
 
-  const total = results.posts.length + results.comments.length;
+  const total = useMemo(() => threads.length + comments.length, [comments.length, threads.length]);
+  const showResults = term.length >= MIN_QUERY_LENGTH;
+  const pending = showResults && (loading || settledTerm !== term);
 
   return (
     <ForumShell activeBoard={undefined}>
       <div className="border-b border-line pb-4">
-        <h1 className="text-lg font-semibold tracking-tight text-ink">
-          Search
-        </h1>
-        <p className="text-xs text-muted">
-          Find posts and replies across kaluwo.
-        </p>
+        <h1 className="text-lg font-semibold tracking-tight text-ink">Search</h1>
+        <p className="text-xs text-muted">Find posts and replies across kaluwo.</p>
 
-        <form
-          role="search"
-          onSubmit={handleSubmit}
-          className="mt-3 flex items-center gap-2"
-        >
+        <form role="search" onSubmit={handleSubmit} className="mt-3 flex items-center gap-2">
           <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-line bg-surface px-4 text-sm text-muted transition-colors focus-within:border-orange-700/40 dark:focus-within:border-orange-500/40">
             <SearchIcon className="size-4 shrink-0" aria-hidden="true" />
             <input
@@ -217,7 +279,7 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search posts, replies, people…"
+              placeholder="Search posts and replies…"
               aria-label="Search posts and replies"
               enterKeyHint="search"
               className="min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-muted focus:outline-none"
@@ -245,20 +307,12 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
         </form>
       </div>
 
-      {term && ready ? (
-        <p className="mt-3 text-xs text-muted" role="status">
-          {total === 0
-            ? "No results"
-            : `${total} ${total === 1 ? "result" : "results"}`}{" "}
-          for{" "}
-          <span className="font-semibold text-ink">“{query.trim()}”</span>
-        </p>
-      ) : (
+      {!showResults ? (
         <div className="mt-3 rounded border border-line bg-surface p-4">
           <p className="text-sm font-semibold text-ink">Search kaluwo</p>
           <p className="mt-1 text-xs leading-5 text-muted">
-            Titles, posts, replies and members are searchable. Or jump to a
-            board:
+            Type at least {MIN_QUERY_LENGTH} characters. Titles and post bodies
+            are searchable. Or jump to a board:
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {BOARDS.map((board) => {
@@ -277,55 +331,56 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
             })}
           </div>
         </div>
+      ) : pending ? (
+        <p className="mt-3 text-xs text-muted" role="status">
+          Searching…
+        </p>
+      ) : error ? (
+        <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
+          {error}
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-muted" role="status">
+          {total === 0 ? "No results" : `${total} ${total === 1 ? "result" : "results"}`}{" "}
+          for <span className="font-semibold text-ink">“{query.trim()}”</span>
+        </p>
       )}
 
-      {term && ready && results.posts.length > 0 ? (
+      {showResults && !pending && !error && threads.length > 0 ? (
         <section aria-labelledby="post-results" className="mt-4">
           <h2
             id="post-results"
             className="text-[11px] font-semibold uppercase tracking-wide text-muted"
           >
-            Posts
+            Threads
           </h2>
           <div className="mt-2 space-y-2">
-            {results.posts.map(({ post, text }) => (
+            {threads.map((thread) => (
               <article
-                key={post.id}
+                key={thread.id}
                 className="rounded border border-line bg-surface p-3 transition-colors hover:border-orange-700/30 sm:p-4 dark:hover:border-orange-500/30"
               >
                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
-                  <span className="font-semibold text-ink">
-                    {post.boardName}
-                  </span>
+                  <span className="font-semibold text-ink">{thread.boardName}</span>
                   <span>•</span>
-                  <span>@{post.author}</span>
+                  <span>@{thread.author}</span>
                   <span>•</span>
                   <span suppressHydrationWarning>
-                    {now
-                      ? formatRelativeTime(post.createdAt, now)
-                      : "just now"}
+                    {now ? formatRelativeTime(thread.createdAt, now) : "just now"}
                   </span>
                 </div>
-                <Link href={`/t/${post.id}`} className="mt-1.5 block">
+                <Link href={`/t/${thread.id}`} className="mt-1.5 block">
                   <h3 className="text-base font-semibold leading-6 text-ink transition-colors hover:text-orange-700 dark:hover:text-orange-400">
-                    <Highlight text={post.title} term={query.trim()} />
+                    <Highlight text={thread.title} term={query.trim()} />
                   </h3>
                 </Link>
-                {text ? (
-                  <p className="mt-1 text-xs leading-5 text-muted">
-                    <Highlight
-                      text={makeExcerpt(text, term)}
-                      term={query.trim()}
-                    />
-                  </p>
-                ) : null}
               </article>
             ))}
           </div>
         </section>
       ) : null}
 
-      {term && ready && results.comments.length > 0 ? (
+      {showResults && !pending && !error && comments.length > 0 ? (
         <section aria-labelledby="reply-results" className="mt-4">
           <h2
             id="reply-results"
@@ -334,9 +389,9 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
             Replies
           </h2>
           <div className="mt-2 space-y-2">
-            {results.comments.map(({ comment, post, text }) => (
+            {comments.map((comment) => (
               <article
-                key={`${post.id}-${comment.id}`}
+                key={comment.id}
                 className="rounded border border-line bg-surface p-3 transition-colors hover:border-orange-700/30 sm:p-4 dark:hover:border-orange-500/30"
               >
                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
@@ -344,26 +399,21 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
                   <span>@{comment.author}</span>
                   <span>•</span>
                   <Link
-                    href={`/t/${post.id}`}
+                    href={`/t/${comment.threadId}`}
                     className="truncate font-semibold text-ink hover:text-orange-700 dark:hover:text-orange-400"
                   >
-                    {post.title}
+                    {comment.threadTitle}
                   </Link>
                   <span>•</span>
                   <span suppressHydrationWarning>
-                    {now
-                      ? formatRelativeTime(comment.createdAt, now)
-                      : "just now"}
+                    {now ? formatRelativeTime(comment.createdAt, now) : "just now"}
                   </span>
                 </div>
                 <p className="mt-1.5 text-sm leading-6 text-body">
-                  <Highlight
-                    text={makeExcerpt(text, term)}
-                    term={query.trim()}
-                  />
+                  <Highlight text={makeExcerpt(comment.text, term)} term={query.trim()} />
                 </p>
                 <Link
-                  href={`/t/${post.id}#comment-${comment.id}`}
+                  href={`/t/${comment.threadId}#comment-${comment.id}`}
                   className="mt-1 inline-block text-[11px] font-semibold text-orange-700 hover:underline dark:text-orange-400"
                 >
                   Jump to reply
@@ -374,11 +424,11 @@ export function SearchContent({ initialQuery }: { initialQuery: string }) {
         </section>
       ) : null}
 
-      {term && ready && total === 0 ? (
+      {showResults && ready && !pending && !error && total === 0 ? (
         <div className="mt-3 rounded border border-dashed border-line bg-surface px-4 py-10 text-center">
           <p className="text-sm font-semibold text-ink">Nothing matched</p>
           <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted">
-            Try a shorter word, a board name, or a member’s username.
+            Try a shorter word or a different phrase.
           </p>
         </div>
       ) : null}

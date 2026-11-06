@@ -29,6 +29,30 @@ Run every file in `migrations/` in filename order:
     after 2 years.
 11. `20261105100000_member_tier_schedule.sql` — schedules
     `promote_member_roles()` hourly with `pg_cron`.
+12. `20261105110000_forum_posting.sql` — `threads.reply_count`, internal RLS
+    helpers, cursor indexes, atomic `create_thread()`, cursor-paginated
+    `list_threads()`, and tighter post visibility/insert policies.
+13. `20261105120000_notifications.sql` — `notifications` table, notification
+    RLS, excerpt clearing on soft-delete, and the Realtime publication.
+14. `20261105130000_posting_rate_limits.sql` — private rate-limit buckets and
+    `BEFORE INSERT` triggers for posting and commenting.
+15. `20261105140000_reaction_summary.sql` — per-thread reaction totals and the
+    caller's own reaction, aggregated in the database.
+16. `20261106100000_moderation_identity.sql` — effective bans,
+    `member_bans`, `member_warnings`, `mod_log`, hierarchy/last-admin
+    protection and profile RLS/grant tightening.
+17. `20261106110000_reports.sql` — post/member reports, open-report
+    deduplication, report rate limits, staff-only resolution records and
+    `staff_resolve_report()`.
+18. `20261106120000_content_visibility.sql` — deleted-content metadata,
+    staff-only visibility, pinned-first feed reads, comment pagination and
+    per-page reaction summaries.
+19. `20261106130000_content_moderation_rpcs.sql` — audited thread/post
+    delete/restore/lock/pin/move RPCs.
+20. `20261106140000_user_moderation_rpcs.sql` — audited ban/unban/warn and
+    admin role-change RPCs with the admin advisory lock.
+21. `20261106150000_invite_admin.sql` — hashed invite codes, revocation,
+    one-time plaintext display and admin invite RPCs.
 
 Migration 11 needs the `pg_cron` extension. Supabase normally allows the
 migration to create it; if not, enable **pg_cron** under
@@ -43,11 +67,23 @@ accounts manually with `select public.promote_member_roles();`.
    order.
 4. Open **Table Editor** and confirm these tables exist:
    `profiles`, `boards`, `threads`, `posts`, `reactions`, `reports`,
-   `media_assets`, `security_events`.
-5. Open `boards`. It should contain 7 rows (Announcements, General, ...).
-6. Open `profiles`. It should have `reaction_score` and
-   `onboarding_completed` columns.
-7. Open `invite_codes`. It should exist and be empty until you generate codes.
+   `media_assets`, `security_events`, `notifications`, `mod_log`,
+   `member_bans`, `member_warnings`, `report_resolutions`.
+5. Confirm the views `my_bans` and `my_warnings` exist.
+6. Open `boards`. It should contain 7 rows (Announcements, General, ...).
+7. Open `profiles`. It should have `reaction_score`, `onboarding_completed` and
+   `banned_until` columns.
+8. Open `threads` and `posts`. They should have `reply_count` (threads) and the
+   `deleted_reason`, `deleted_by`, `deleted_at` columns.
+9. Open `notifications`. It should exist and be empty.
+10. Open `invite_codes`. It should have `code_hash`, `code_hint`, `revoked_at`
+    and `revoked_by`, and no plaintext `code` column.
+11. Confirm the Realtime publication includes `notifications`:
+    ```sql
+    select schemaname, tablename
+    from pg_publication_tables
+    where pubname = 'supabase_realtime';
+    ```
 
 Each migration runs as one transaction. If one fails, nothing in that file is
 applied, so fix the error and run the whole file again.
@@ -142,30 +178,23 @@ Replace both before deploying.
 
 ## 5. Create invite codes
 
-Username + password sign-up needs a single-use invite code. Codes live in the
-`invite_codes` table and have no browser access at all.
+Username + password sign-up needs a single-use invite code. From Phase 2,
+admins create and revoke codes in `/moderation/invites`; the browser has no
+access to the `invite_codes` table.
 
-Generate 10 codes in **SQL Editor**:
+- Codes are generated in the database with 128-bit `pgcrypto` randomness.
+- Only a SHA-256 hash and a six-character display hint are stored. The plaintext
+  is returned **once** at creation. Copy it immediately; it cannot be recovered.
+- `admin_list_invite_codes()` is admin-only and never returns plaintext.
+- Revoke an unused code by its hash in the admin UI. Used codes cannot be
+  revoked.
+- `consume_invite_code()` hashes the supplied plaintext and atomically claims
+  it, rejecting used or revoked codes.
 
-```sql
-insert into public.invite_codes (code)
-select replace(gen_random_uuid()::text, '-', '')
-from generate_series(1, 10)
-returning code;
-```
-
-List unused codes:
-
-```sql
-select code, created_at
-from public.invite_codes
-where used_at is null
-order by created_at;
-```
-
-A code is claimed atomically by `consume_invite_code()` during sign-up. It is
-single-use even if two people submit it at the same time. Keep the codes out of
-public posts and screenshots.
+The old manual SQL that inserted a plaintext `code` no longer works because the
+column was removed. Use the admin UI, or call
+`admin_create_invite_codes(count, reason, request_id)` from the SQL Editor as an
+admin.
 
 ## 6. Generate TypeScript types
 
@@ -211,8 +240,19 @@ redirecting. Keep the Site URL set to your real origin.
 | `reactions` | One changeable reaction per member per post or comment |
 | `reports` | Report queue with `open` / `resolved` / `dismissed` |
 | `media_assets` | catbox upload metadata and removal status |
-| `invite_codes` | Single-use keys for username + password sign-up; no browser access |
+| `notifications` | Per-member reply/quote/mention notifications with read state |
+| `mod_log` | Append-only moderation audit log; staff-readable, no direct API writes |
+| `member_bans` | Private ban history and issuing moderator; staff-only base table |
+| `member_warnings` | Private warnings and issuing moderator; staff-only base table |
+| `report_resolutions` | Staff-only resolution note, resolver and linked mod-log row |
+| `invite_codes` | Hashed single-use sign-up codes with revocation and one-time plaintext display |
 | `security_events` | Auth and moderation audit trail with IP; service-role only |
+
+The `my_bans` and `my_warnings` views expose a member’s own reason/expiry and
+acknowledgement state without the issuing moderator identity.
+
+`kaluwo_private` is an internal schema. It is **not** exposed by PostgREST and
+holds the RLS helpers, reply-count trigger and rate-limit buckets.
 
 ### Account flows
 
@@ -254,13 +294,164 @@ redirecting. Keep the Site URL set to your real origin.
   thread, and rejects self-replies.
 - `posts_reply_to_idx` makes reply lookups cheap.
 
+### Posting and rate limits
+
+- `create_thread(board, title, content)` is `SECURITY INVOKER`, so both inserts
+  are still checked by the thread and post RLS policies. It creates the thread
+  and the opening post in one transaction.
+- Direct `posts` inserts are comments only. The opening post must be the first
+  post in the author's own thread. Comments are rejected in threads with no
+  active opening post.
+- `threads.reply_count` is maintained by a `SECURITY DEFINER` trigger after
+  post insert, hard delete, soft delete/restore, or a thread move.
+- Rate limits are enforced in `BEFORE INSERT` triggers on `threads` and
+  `posts`:
+  - `new_member`: 1 thread / 10 minutes, 5 comments / 10 minutes
+  - `member` / `senior_member`: 5 threads / 15 minutes, 30 comments / 15 minutes
+  - staff: higher limits
+- `kaluwo_private.consume_posting_rate_limit()` uses an atomic
+  `INSERT ... ON CONFLICT ... WHERE used < limit` upsert. A new time window gets
+  a new row, which resets the counter.
+- The trigger raises with `hint = 'kaluwo_rate_limited'` and
+  `detail = <retry seconds>`. The server actions catch that, show a friendly
+  message, and record `forum.rate_limited` in `security_events`.
+- **Audit gap:** a direct PostgREST insert is still rejected by the trigger,
+  but PostgreSQL rolls back any audit row written before the `RAISE`. Only the
+  server-action path records the event.
+
+### Notifications
+
+- `notifications` rows are created only by the server action with the service
+  role. There is no browser INSERT policy, so a client cannot send a
+  notification to another member.
+- Recipients are resolved from database rows: the reply target's `author_id`,
+  the thread's `author_id`, or a profile looked up from a quoted/mentioned
+  username. The actor is always `auth.uid()`, and self-notifications are
+  skipped.
+- One notification is stored per `(user_id, post_id)`. Priority is reply >
+  quote > mention.
+- The recipient can SELECT, UPDATE `read_at` and DELETE only their own rows.
+- `clear_notification_excerpts` empties the excerpt when the commented post is
+  soft-deleted. `clear_thread_notification_excerpts` clears the excerpt and
+  replaces the title snapshot with `[deleted thread]` for every notification in
+  a soft-deleted thread.
+- `notifications` is in the `supabase_realtime` publication with
+  `REPLICA IDENTITY FULL`. The browser subscribes with a `user_id=eq.<uuid>`
+  filter. RLS also scopes INSERT/UPDATE events. The filter is required because
+  Realtime cannot apply RLS to DELETE payloads.
+
+### Reaction summary
+
+`thread_reaction_summary(thread_id)` aggregates reactions per post and kind and
+returns whether the caller has that reaction. The thread page uses it instead
+of fetching every raw reaction row, so PostgREST's `max_rows` limit cannot
+silently undercount a busy thread.
+
+### Cursor pagination
+
+`list_threads(board, sort, before_at, before_id, limit)` returns the next page
+using `(last_post_at, id)` for `latest` or `(created_at, id)` for `new`. It
+never uses `OFFSET`. Threads with no active opening post are excluded.
+
+### Roles, effective bans and hierarchy
+
+- `profiles.role` remains the authoritative DB role. `is_banned()` and
+  `is_moderator()` / `is_admin()` read `profiles` on every call and treat a ban
+  as active only while `is_banned` and `banned_until` are current. A demotion
+  or ban therefore takes effect immediately, even if a client still holds an
+  old JWT or UI state.
+- Members never receive a direct UPDATE privilege on `role`, `is_banned` or
+  `banned_until`. The staff RPCs are the only write path.
+- Moderators cannot act on admins or other moderators. Admins can act on
+  moderators and members. Admins cannot be banned at all.
+- `admin_set_role` allows member/moderator/admin transitions and blocks
+  removing the last active admin. `admin_set_role`, `moderate_ban_user` and
+  `moderate_unban_user` take the same transaction-scoped advisory lock, then
+  re-check the caller’s live admin/staff role after acquiring it. Concurrent
+  demotions cannot leave zero admins.
+- `member_bans` stores the private reason and issuing moderator. Members read
+  their own safe rows through `my_bans`; staff read the base table.
+- Warnings use `member_warnings`, the `my_warnings` safe view and
+  `acknowledge_warning()`. Warnings do not create bell notifications.
+
+### Moderation log
+
+`mod_log` is append-only through the API:
+
+- `authenticated` gets SELECT only. The RLS policy requires
+  `is_moderator()`; a demoted or banned moderator loses access immediately.
+- There are no INSERT/UPDATE/DELETE policies or grants for `authenticated`.
+  Even an admin cannot mutate it through PostgREST.
+- Every staff RPC writes the state change and its `mod_log` row in one
+  transaction. Rows include the actor, action, target snapshot, required
+  reason, and `previous_value` / `new_value` JSON.
+- A database owner with SQL access can still change the table; the append-only
+  rule is enforced for the application/API.
+
+### Reports
+
+- `reports` supports post/comment targets (`post`) and member targets
+  (`user`). `post_id` and `target_user_id` are shape-checked.
+- Partial unique indexes allow one **open** report per reporter per target.
+  Resolved/dismissed reports can be reported again.
+- Report creation is rate limited through the same atomic bucket function
+  (`action = 'report'`). The server action logs `forum.rate_limited` when it
+  gets the `kaluwo_rate_limited` hint.
+- Reporters can SELECT only their own report rows. Staff see the queue.
+- `report_resolutions` is staff-only and stores the note, resolver and
+  `mod_log_id`. Reporters never see the resolution note or handler.
+- `staff_resolve_report()` verifies that staff are not resolving their own
+  content/account, and requires an admin when the target is a moderator or
+  admin. Repeating the same resolution is idempotent.
+- The queue supports open / resolved / dismissed filters.
+
+### Invite codes
+
+- `invite_codes` now stores `code_hash` (SHA-256 of the plaintext) and
+  `code_hint` (first six characters), plus `revoked_at` / `revoked_by`. The
+  plaintext `code` column is gone.
+- `admin_create_invite_codes()` generates 128-bit random codes with
+  `pgcrypto`, stores only the hash, and returns the plaintext once. Repeating
+  the same request id returns no plaintext and no new codes.
+- `admin_list_invite_codes()` is admin-only and returns hashes/hints, never
+  plaintext.
+- `admin_revoke_invite_code()` revokes an unused code by hash. Used codes
+  cannot be revoked.
+- `consume_invite_code()` hashes the supplied plaintext and rejects used or
+  revoked codes.
+
+### Comment pagination and pinned threads
+
+- `list_thread_comments(thread_id, after_at, after_id, limit)` orders by
+  `(created_at, id)` ascending. It is `SECURITY INVOKER`, so members do not see
+  deleted comments while staff do.
+- The thread page loads the first 50 comments and loads forward on demand.
+  Notification links auto-load forward until the target comment is present.
+- `post_reaction_summary(post_ids[])` aggregates reaction totals and the
+  caller’s own reaction for the loaded comment page, avoiding PostgREST
+  `max_rows` truncation.
+- Pinned threads are a separate section (`list_threads(p_pinned = true)`);
+  the main feed uses `p_pinned = false` and its existing cursor. Pin/unpin
+  changes cannot corrupt the main feed cursor.
+- Indexes cover `(is_pinned, last_post_at, id)` and the board variants.
+
+### Why staff writes are RPC-only
+
+Staff actions need an atomic mod-log row plus live role/hierarchy/last-admin
+checks. The RPCs are `SECURITY DEFINER`, pin `search_path`, revoke EXECUTE from
+public/anon, grant only `authenticated`, and never accept an actor id or role
+from the client. Direct UPDATE/DELETE on `profiles`, `threads`, `posts`,
+`reports`, `mod_log`, `member_bans` and `member_warnings` is removed or
+restricted. RLS remains the gate for reads and member actions.
+
 ### Security audit log
 
 `security_events` records authentication events (`login.succeeded`,
 `login.failed`, `signup.succeeded`, `signup.failed`,
-`password_reset.requested`, `oauth.succeeded`, `oauth.failed`) with the
-account, IP, user agent and a small JSONB metadata object. The app calls
-`recordSecurityEvent()` from `src/lib/audit/security-events.ts`.
+`password_reset.requested`, `oauth.succeeded`, `oauth.failed`) and the
+Phase 1 `forum.rate_limited` abuse event, with the account, IP, user agent and
+a small JSONB metadata object. The app calls `recordSecurityEvent()` from
+`src/lib/audit/security-events.ts`.
 
 - **No browser access.** RLS is enabled with no policies, and the default
   `anon` / `authenticated` grants are revoked. The service role is the only
@@ -275,37 +466,91 @@ account, IP, user agent and a small JSONB metadata object. The app calls
   notice.
 - **Never store secrets.** Metadata holds a username or a reason string, never
   passwords, session tokens or CAPTCHA values.
+- **Rate-limit audit gap.** A direct PostgREST insert that hits a rate limit is
+  rejected by the trigger, but the trigger cannot persist an audit row because
+  the `RAISE` rolls the transaction back. The Next.js server action records
+  `forum.rate_limited` instead. This is a documented Phase 1 limitation.
 
 ## What the RLS policies allow
 
 - **Public reads:** profiles, boards, non-deleted threads, non-deleted posts,
-  reactions, and active media. Anonymous visitors can browse the forum.
+  reactions, and active media. Anonymous visitors can browse the forum. Staff
+  see soft-deleted threads/posts; members do not.
 - **Authenticated writes:** a member can start a thread, add a post or reply,
-  react to a comment, report a post, or add media. The row must belong to them.
+  react, report content/members, or add media. The row must belong to them.
+  Staff moderation writes are RPC-only.
 - **Banned members:** can still read and react. Posting, commenting,
-  uploading, reporting and other writes still check `is_banned()` and reject
-  them; the reaction policies intentionally do not.
-- **Threads:** only moderators can lock, pin, move, soft-delete or hard-delete
-  a thread. Authors do not edit thread titles.
-- **Posts:** authors can edit their own content, set `reply_to_post_id`, and
-  soft-delete their own posts. They cannot move a post, change its author, or
-  turn a reply into the opening post. Moderators can update or hard-delete any
-  post.
-- **Reactions:** only comments (not the opening post) can be reacted to.
-  Members can change or remove their own reaction.
-- **Reports:** the reporter and moderators can read a report. Only moderators
-  can change its status.
-- **Media:** active assets are public; owners and moderators can mark them
-  removed. Only moderators can delete the row.
-- **Profiles:** users can edit their own username and avatar. Only admins can
-  change roles. Moderators can ban members, but cannot ban an admin. The
-  service role and SQL editor bypass these checks.
+  uploading, reporting and other writes check the effective `is_banned()`
+  state and reject them; the reaction policies intentionally do not.
+- **Threads:** direct UPDATE/DELETE is revoked. Only the audited RPCs can
+  lock, unlock, pin, unpin, move, soft-delete or restore a thread. Authors do
+  not edit thread titles.
+- **Posts:** direct UPDATE/DELETE is revoked. Only the audited RPC can
+  soft-delete or restore a post/comment. The opening post is created by
+  `create_thread`.
 - **Reactions:** members, including banned members, can react to active posts
   and comments in active threads, but not to their own content.
   `reaction_score` still counts reactions on comments only, so reacting to an
-  opening post does not change a member's score.
+  opening post does not change a member's score. Members can change or remove
+  their own reaction, and moderators can remove reactions.
+- **Reports:** reporters can read only their own report rows; staff read the
+  queue. Status changes and `report_resolutions` are staff-only RPC writes.
+- **Media:** active assets are public; owners and moderators can mark them
+  removed. Only moderators can delete the row.
+- **Profiles:** users can edit their own username and avatar only. Role and
+  ban changes are admin/moderator RPCs; direct privileged updates are denied.
+- **Member moderation records:** members read their own safe `my_bans` /
+  `my_warnings` views without the issuing moderator. Staff read the base
+  tables. `mod_log`, `member_bans`, `member_warnings` and
+  `report_resolutions` have no direct API INSERT/UPDATE/DELETE grants.
+- **Notifications:** a member can read, mark read and delete only their own
+  rows. There is no INSERT policy; the service role creates notifications.
+- **Rate-limit buckets:** RLS is enabled with no policies, and
+  `anon`/`authenticated` have no grants. Only the `SECURITY DEFINER` trigger
+  function touches the table.
+- **Threads:** a member cannot seed `reply_count` or pin/lock/delete a thread
+  on insert. Threads with no active opening post are hidden by `list_threads`
+  and the thread page.
+- **Posts:** posts in a soft-deleted thread are hidden from members. Direct
+  inserts are comments only; the opening post is created by `create_thread`.
 - **Audit log:** `security_events` has RLS enabled and no policies. Only the
   service role and the SQL editor can read or write it.
+
+## Phase 1 tests
+
+The repository has two PostgREST suites plus a plain-PostgreSQL suite:
+
+1. **PostgREST / Supabase Phase 1** (`tests/phase1-rls.mjs`) and **Phase 2**
+   (`tests/phase2-rls.mjs`). Start the local stack, apply the migrations, then
+   run:
+   ```bash
+   npx supabase start
+   npx supabase db reset
+   export SUPABASE_URL=http://127.0.0.1:54321
+   export SUPABASE_ANON_KEY=<local anon key>
+   export SUPABASE_SERVICE_ROLE_KEY=<local service role key>
+   npm run test:rls
+   ```
+   `npm run test:rls` runs both suites. They create throwaway users and cover
+   direct privilege escalation, notification RLS, Realtime INSERT/DELETE,
+   rate-limit hints, cursor pagination, LIKE escaping, staff hierarchy,
+   last-admin concurrency, demotion immediacy, ban expiry, warnings, reports,
+   invite hashing/revocation, append-only mod-log enforcement, pinned-feed
+   pagination, deleted-content visibility and comment pagination past 200
+   comments. They delete their own data. On a cold start, the Realtime
+   container can take up to a minute to finish booting after `supabase db
+   reset`; if only the Realtime check fails, wait for the stack to settle and
+   run again. The app falls back to polling if Realtime is unavailable.
+
+2. **Plain PostgreSQL Phase 1** (`supabase/tests/phase1_plain_postgres.sql`).
+   Apply the migrations to PostgreSQL 17 with the stubbed `auth` schema
+   described in the file header, then:
+   ```bash
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+     -f supabase/tests/phase1_plain_postgres.sql
+   ```
+   The `20261105100000_member_tier_schedule.sql` migration can be skipped in a
+   plain PostgreSQL test because it requires `pg_cron`.
 
 ## Troubleshooting
 
@@ -318,8 +563,36 @@ account, IP, user agent and a small JSONB metadata object. The app calls
   `20261105010000_username_login.sql`.
 - **`function consume_invite_code does not exist`** — run
   `20261105040000_google_auth_and_invites.sql`.
-- **“That invite code is not valid”** — generate a fresh code with the SQL in
-  section 5. Each code works once.
+- **`function create_thread does not exist`** or **`list_threads does not
+  exist`** — run `20261105110000_forum_posting.sql`.
+- **The bell never updates** — confirm `notifications` is in the
+  `supabase_realtime` publication, the table has a SELECT policy for the
+  member, and Realtime is enabled in the Supabase project. The 60-second poll
+  still works if Realtime is blocked.
+- **A member is unexpectedly rate limited** — the limits are in
+  `kaluwo_private.consume_posting_rate_limit()`; wait for the window to expire
+  or inspect `kaluwo_private.rate_limit_buckets` in the SQL Editor.
+- **“That invite code is not valid”** — create a fresh code in
+  `/moderation/invites` as an admin. Plaintext codes are shown once and are
+  stored only as hashes; used or revoked codes cannot be reused.
+- **`function admin_set_role does not exist`** — run the Phase 2 migrations,
+  especially `20261106140000_user_moderation_rpcs.sql`.
+- **`function moderate_set_post_deleted does not exist`** — run
+  `20261106130000_content_moderation_rpcs.sql`.
+- **`function staff_resolve_report does not exist`** — run
+  `20261106110000_reports.sql`.
+- **`extension "pgcrypto" is not available`** — enable the `pgcrypto`
+  extension in Database -> Extensions, then rerun
+  `20261106150000_invite_admin.sql`.
+- **“At least one admin must remain”** — the last-admin guard is working.
+  Promote another admin first.
+- **A moderator cannot act on a thread or member** — check the target’s role.
+  Moderators cannot act on admins or other moderators; admins can.
+- **The mod log cannot be edited** — that is intentional. It is append-only
+  through the API; use the SQL Editor only for incident recovery, not normal
+  operation.
+- **An invite plaintext was lost** — it cannot be recovered. Revoke the code by
+  its hash in `/moderation/invites` and create a new batch.
 - **Google button says the provider is not enabled** — enable Google under
   **Authentication -> Providers** and add the Supabase callback URI to the
   Google OAuth client.
