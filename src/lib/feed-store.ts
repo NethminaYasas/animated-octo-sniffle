@@ -90,10 +90,17 @@ export function saveComment(comment: SavedComment): boolean {
   const list = Array.isArray(all?.[String(comment.postId)])
     ? all[String(comment.postId)]
     : [];
-  return writeJson(COMMENTS_KEY, {
+  const saved = writeJson(COMMENTS_KEY, {
     ...all,
     [String(comment.postId)]: [...list, comment],
   });
+
+  if (saved) {
+    // Lets the feed re-rank threads by their latest reply.
+    window.dispatchEvent(new Event(FEED_CHANGED_EVENT));
+  }
+
+  return saved;
 }
 
 /** Every visible comment on this device, across all threads. */

@@ -2,11 +2,12 @@ import { CalendarDays, Plus, Shield, Sparkles, UserRound } from "lucide-react";
 import Link from "next/link";
 
 import { LogoutButton } from "@/components/logout-button";
+import { formatRole, type UserRole } from "@/lib/roles";
 
 export type PublicProfile = {
   username: string;
   avatar_url: string | null;
-  role: "member" | "moderator" | "admin";
+  role: UserRole;
   is_banned: boolean;
   reaction_score: number;
   created_at: string;
@@ -79,12 +80,10 @@ export function ProfileHeader({
               {profile.username}
             </h1>
 
-            {profile.role !== "member" ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold capitalize text-muted">
-                <Shield className="size-3" aria-hidden="true" />
-                {profile.role}
-              </span>
-            ) : null}
+            <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-muted">
+              <Shield className="size-3" aria-hidden="true" />
+              {formatRole(profile.role)}
+            </span>
 
             {profile.is_banned ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300">

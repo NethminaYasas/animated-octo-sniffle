@@ -538,7 +538,7 @@ export function ThreadContent({ postId }: { postId: number }) {
                         >
                           {comment.authorInitial}
                         </span>
-                        <span className="line-clamp-2 w-full break-words text-center text-xs font-semibold leading-tight text-ink sm:text-sm">
+                        <span className="w-full break-words text-center text-xs font-semibold leading-snug text-ink sm:text-sm">
                           {comment.author}
                         </span>
                       </UserHoverCard>

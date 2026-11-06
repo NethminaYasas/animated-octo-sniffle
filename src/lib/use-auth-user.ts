@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import type { UserRole } from "@/lib/roles";
 
-export type UserRole = "member" | "moderator" | "admin";
+export type { UserRole } from "@/lib/roles";
 
 export type AuthUser = {
   id: string;
@@ -49,7 +50,7 @@ export function useAuthUser() {
                 id: authUser.id,
                 email: authUser.email ?? null,
                 username: null,
-                role: "member",
+                role: "new_member",
                 isBanned: false,
               },
         );

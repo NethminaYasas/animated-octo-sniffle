@@ -38,7 +38,9 @@ UTF-8 everywhere, suitable fonts, and an i18n-ready UI starting in English.
 
 ## 3. Roles
 
-- `member`
+- `new_member` — the first 28 days after account creation
+- `member` — after 28 days
+- `senior_member` — after 2 years
 - `moderator`
 - `admin`
 
@@ -80,7 +82,7 @@ The SQL lives in `supabase/migrations/`. Tables:
 - `username` — unique; 3-20 characters, lowercase, NFC-normalised. English,
   Sinhala and Tamil letters/marks, digits and underscore are allowed.
 - `avatar_url`
-- `role` — `member` / `moderator` / `admin`
+- `role` — `new_member` / `member` / `senior_member` / `moderator` / `admin`
 - `is_banned`
 - `onboarding_completed` — false until a Google account picks a username and
   password
@@ -329,6 +331,10 @@ Apply these to every task.
 - A profile trigger stops members changing their own `role`, `is_banned` or
   `created_at`. Only admins change roles; moderators can ban members but not
   admins.
+- Membership tiers are time-based: a profile starts as `new_member`, becomes
+  `member` after 28 days and `senior_member` after 2 years.
+  `promote_member_roles()` runs hourly through `pg_cron`; staff roles are never
+  changed automatically.
 - The migration was checked against PostgreSQL 17 with a stubbed `auth`
   schema: schema creation, profile trigger, RLS reads/writes, soft-delete
   visibility, moderator overrides, reports and media removal all passed.

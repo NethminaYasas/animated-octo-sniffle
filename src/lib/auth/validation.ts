@@ -11,6 +11,18 @@ export function normaliseUsername(value: string): string {
   return value.trim().toLowerCase().normalize("NFC");
 }
 
+/**
+ * Dynamic route params arrive percent-encoded from Next.js, so decode them
+ * before normalising. Usernames cannot contain "%", so this is safe.
+ */
+export function usernameFromParam(value: string): string {
+  try {
+    return normaliseUsername(decodeURIComponent(value));
+  } catch {
+    return normaliseUsername(value);
+  }
+}
+
 export function usernameProblem(value: string): string | null {
   const username = normaliseUsername(value);
 

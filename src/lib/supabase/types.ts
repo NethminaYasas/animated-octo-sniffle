@@ -397,6 +397,10 @@ export type Database = {
       is_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_banned: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_moderator: { Args: Record<PropertyKey, never>; Returns: boolean };
+      promote_member_roles: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
       recompute_reaction_score: { Args: { target_profile: string }; Returns: undefined };
       resolve_login_email: { Args: { lookup_username: string }; Returns: string };
     };
@@ -405,7 +409,7 @@ export type Database = {
       media_status: "active" | "removed";
       reaction_kind: "like" | "laugh" | "wow" | "anger" | "dislike";
       report_status: "open" | "resolved" | "dismissed";
-      user_role: "member" | "moderator" | "admin";
+      user_role: "new_member" | "member" | "senior_member" | "moderator" | "admin";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -525,7 +529,7 @@ export const Constants = {
       media_status: ["active", "removed"],
       reaction_kind: ["like", "laugh", "wow", "anger", "dislike"],
       report_status: ["open", "resolved", "dismissed"],
-      user_role: ["member", "moderator", "admin"],
+      user_role: ["new_member", "member", "senior_member", "moderator", "admin"],
     },
   },
 } as const;

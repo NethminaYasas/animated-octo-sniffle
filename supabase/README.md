@@ -22,6 +22,18 @@ Run every file in `migrations/` in filename order:
    audit log for auth events.
 8. `20261105070000_post_reactions.sql` — members can react to posts as well as
    comments, but not to their own content.
+9. `20261105080000_member_tiers.sql` — adds the `new_member` and
+   `senior_member` role values.
+10. `20261105090000_member_tier_promotion.sql` — new accounts start as
+    `new_member`, auto-promote to `member` after 28 days and `senior_member`
+    after 2 years.
+11. `20261105100000_member_tier_schedule.sql` — schedules
+    `promote_member_roles()` hourly with `pg_cron`.
+
+Migration 11 needs the `pg_cron` extension. Supabase normally allows the
+migration to create it; if not, enable **pg_cron** under
+**Database -> Extensions** first, then rerun that file. You can always promote
+accounts manually with `select public.promote_member_roles();`.
 
 ### Dashboard method (recommended)
 

@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { ForumShell } from "@/components/forum-shell";
-import { normaliseUsername } from "@/lib/auth/validation";
+import { usernameFromParam } from "@/lib/auth/validation";
 import { createClient } from "@/lib/supabase/server";
 
 import { ProfileActivity } from "../profile-activity";
@@ -20,7 +20,7 @@ export async function generateMetadata({
   const { username } = await params;
 
   return {
-    title: `${normaliseUsername(username)} · kaluwo`,
+    title: `${usernameFromParam(username)} · kaluwo`,
   };
 }
 
@@ -57,7 +57,7 @@ async function PublicProfileContent({ params }: ProfilePageProps) {
     .select(
       "id, username, avatar_url, role, is_banned, reaction_score, onboarding_completed, created_at",
     )
-    .eq("username", normaliseUsername(username))
+    .eq("username", usernameFromParam(username))
     .maybeSingle();
 
   if (error) {

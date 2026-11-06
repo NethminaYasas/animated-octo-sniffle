@@ -3,12 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Plus, MessageSquare } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Toaster } from "sonner";
 
 import { ForumShell } from "@/components/forum-shell";
-import { MarkdownContent } from "@/components/markdown-content";
-import { PostActions } from "@/components/post-actions";
+import { UserAvatar } from "@/components/user-avatar";
 import { UserHoverCard } from "@/components/user-hover-card";
 import { BOARDS } from "@/lib/boards";
 import { SEED_POSTS } from "@/lib/seed-posts";
@@ -17,12 +16,54 @@ import {
   loadComments,
   loadDeletedPostIds,
   loadPosts,
+  type SavedComment,
   type SavedPost,
 } from "@/lib/feed-store";
-import { formatRelativeTime } from "@/lib/time";
-import { useAuthUser } from "@/lib/use-auth-user";
 
 type SortOption = "new" | "hot" | "best";
+
+type FeedPost = SavedPost & {
+  /** Latest comment, or the post itself when nobody has replied yet. */
+  lastActivityAt: string;
+  lastCommentAuthor: string | null;
+  lastCommentIsReply: boolean;
+};
+
+type PostActivity = {
+  commentCount: number;
+  lastCommentAuthor: string | null;
+  lastCommentAt: string | null;
+  lastCommentIsReply: boolean;
+};
+
+function formatPostDate(dateString: string): string {
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  // Fixed to UTC so the server and client render the same date.
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function latestComment(comments: SavedComment[]): SavedComment | null {
+  return comments.reduce<SavedComment | null>((latest, comment) => {
+    if (!latest) {
+      return comment;
+    }
+
+    return new Date(comment.createdAt).getTime() >
+      new Date(latest.createdAt).getTime()
+      ? comment
+      : latest;
+  }, null);
+}
 
 function SortTabs({ activeSort, onSortChange }: { activeSort: SortOption; onSortChange: (sort: SortOption) => void }) {
   const sorts: { value: SortOption; label: string }[] = [
@@ -52,63 +93,50 @@ function SortTabs({ activeSort, onSortChange }: { activeSort: SortOption; onSort
   );
 }
 
-function PostCard({
-  post,
-  now,
-  username,
-}: {
-  post: SavedPost;
-  now: Date | null;
-  username: string | null;
-}) {
-  const board = BOARDS.find((candidate) => candidate.id === post.boardId);
-  const BoardIcon = board?.icon;
-
+function PostCard({ post }: { post: FeedPost }) {
   return (
-    <article className="mt-3 rounded border border-line bg-surface p-3 sm:p-4 hover:border-orange-700/30 dark:hover:border-orange-500/30 transition-colors">
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
-        <span className="grid size-5 place-items-center rounded-full bg-orange-700 text-white">
-          {BoardIcon ? (
-            <BoardIcon className="size-3" aria-hidden="true" />
-          ) : (
-            <span className="text-[0.65rem] font-bold">{post.boardInitial}</span>
-          )}
-        </span>
-        <span className="font-semibold text-ink">{post.boardName}</span>
-        <span>•</span>
-        <span>
-          Posted by{" "}
-          <UserHoverCard username={post.author} initial={post.authorInitial} />
-        </span>
-        <span>•</span>
-        <span suppressHydrationWarning>{now ? formatRelativeTime(post.createdAt, now) : "just now"}</span>
-        {post.isPreview && (
-          <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-orange-800 dark:bg-orange-950/60 dark:text-orange-300">
-            Preview
-          </span>
-        )}
-      </div>
-      <Link href={`/t/${post.id}`} className="mt-2 block">
-        <h2 className="text-lg font-semibold leading-6 text-ink transition-colors hover:text-orange-700 dark:hover:text-orange-400">
-          {post.title}
-        </h2>
-      </Link>
-      {post.content.trim() !== "" ? (
-        <div className="mt-2 max-h-44 overflow-hidden">
-          <MarkdownContent>{post.content}</MarkdownContent>
-        </div>
-      ) : null}
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold text-muted">
-        <Link href={`/t/${post.id}`} className="flex items-center gap-1 transition-colors hover:text-ink dark:hover:text-ink">
-          <MessageSquare className="size-3.5" />
-          {post.commentCount} comments
-        </Link>
-        <PostActions
-          postId={post.id}
-          title={post.title}
-          body={post.content}
-          username={username}
+    <article className="mt-3 flex items-start gap-3 rounded border border-line bg-surface p-3 transition-colors hover:border-orange-700/30 dark:hover:border-orange-500/30 sm:p-4">
+      <UserHoverCard
+        username={post.author}
+        initial={post.authorInitial}
+        className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 focus-visible:ring-offset-2"
+      >
+        <UserAvatar
+          username={post.author}
+          initial={post.authorInitial}
+          className="size-10 sm:size-11"
         />
+        <span className="sr-only">{post.author}</span>
+      </UserHoverCard>
+      <div className="min-w-0 flex-1">
+        <Link href={`/t/${post.id}`} className="block">
+          <h2 className="text-base font-semibold leading-6 text-ink transition-colors hover:text-orange-700 sm:text-lg dark:hover:text-orange-400">
+            {post.title}
+          </h2>
+        </Link>
+        <p className="mt-0.5 text-xs text-muted">
+          <UserHoverCard
+            username={post.author}
+            initial={post.authorInitial}
+            className="font-semibold text-ink underline-offset-2 hover:underline"
+          >
+            {post.author}
+          </UserHoverCard>
+        </p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-faint">
+          <span>Posted {formatPostDate(post.createdAt)}</span>
+          {post.lastCommentAuthor ? (
+            <>
+              <span aria-hidden="true">•</span>
+              <span>
+                {post.lastCommentIsReply ? "Last reply" : "Last comment"} by{" "}
+                <span className="font-semibold text-muted">
+                  {post.lastCommentAuthor}
+                </span>
+              </span>
+            </>
+          ) : null}
+        </p>
       </div>
     </article>
   );
@@ -119,13 +147,11 @@ function PostList({
   sort,
   now,
   createPostHref,
-  username,
 }: {
-  posts: SavedPost[];
+  posts: FeedPost[];
   sort: SortOption;
   now: Date | null;
   createPostHref: string;
-  username: string | null;
 }) {
   const sortedPosts = [...posts];
 
@@ -133,7 +159,13 @@ function PostList({
 
   switch (sort) {
     case "new":
-      sortedPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      // "New" means most recently active: a reply bumps the thread back up.
+      sortedPosts.sort(
+        (a, b) =>
+          new Date(b.lastActivityAt).getTime() -
+            new Date(a.lastActivityAt).getTime() ||
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
       break;
     case "hot":
       sortedPosts.sort((a, b) => {
@@ -168,7 +200,7 @@ function PostList({
   return (
     <div className="mt-3 space-y-0">
       {sortedPosts.map((post) => (
-        <PostCard key={post.id} post={post} now={now} username={username} />
+        <PostCard key={post.id} post={post} />
       ))}
     </div>
   );
@@ -180,8 +212,6 @@ export default function Home() {
 
 function HomeContent() {
   const router = useRouter();
-  const { user } = useAuthUser();
-  const username = user?.username ?? null;
   const [activeBoard, setActiveBoardState] = useState<string | null>(null);
   const setActiveBoard = (boardId: string | null) => {
     setActiveBoardState(boardId);
@@ -206,12 +236,12 @@ function HomeContent() {
   const [activeSort, setActiveSort] = useState<SortOption>("new");
   const [createdPosts, setCreatedPosts] = useState<SavedPost[]>([]);
   const [deletedPostIds, setDeletedPostIds] = useState<number[]>([]);
-  const [commentCounts, setCommentCounts] = useState<Record<number, number>>({});
+  const [postActivity, setPostActivity] = useState<Record<number, PostActivity>>({});
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
     const currentDate = new Date();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- start the relative-time clock on the client
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start the ranking clock on the client
     setNow(currentDate);
     const interval = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(interval);
@@ -223,25 +253,51 @@ function HomeContent() {
       setCreatedPosts(saved);
       setDeletedPostIds(loadDeletedPostIds());
 
-      const counts: Record<number, number> = {};
+      const activity: Record<number, PostActivity> = {};
       for (const post of [...SEED_POSTS, ...saved]) {
-        counts[post.id] = loadComments(post.id).length;
+        const comments = loadComments(post.id);
+        const latest = latestComment(comments);
+
+        activity[post.id] = {
+          commentCount: comments.length,
+          lastCommentAuthor: latest?.author ?? null,
+          lastCommentAt: latest?.createdAt ?? null,
+          lastCommentIsReply: Boolean(latest?.replyToAuthor),
+        };
       }
-      setCommentCounts(counts);
+      setPostActivity(activity);
     };
 
     syncFeed();
     window.addEventListener(FEED_CHANGED_EVENT, syncFeed);
+    // Comments written in another tab arrive as a storage event.
+    window.addEventListener("storage", syncFeed);
 
-    return () => window.removeEventListener(FEED_CHANGED_EVENT, syncFeed);
+    return () => {
+      window.removeEventListener(FEED_CHANGED_EVENT, syncFeed);
+      window.removeEventListener("storage", syncFeed);
+    };
   }, []);
 
-  const feed = [...SEED_POSTS, ...createdPosts]
+  const feed: FeedPost[] = [...SEED_POSTS, ...createdPosts]
     .filter((post) => !deletedPostIds.includes(post.id))
-    .map((post) => ({
-      ...post,
-      commentCount: commentCounts[post.id] ?? post.commentCount,
-    }));
+    .map((post) => {
+      const activity = postActivity[post.id];
+      const lastCommentAt = activity?.lastCommentAt ?? null;
+      const lastActivityAt =
+        lastCommentAt &&
+        new Date(lastCommentAt).getTime() > new Date(post.createdAt).getTime()
+          ? lastCommentAt
+          : post.createdAt;
+
+      return {
+        ...post,
+        commentCount: activity?.commentCount ?? post.commentCount,
+        lastActivityAt,
+        lastCommentAuthor: activity?.lastCommentAuthor ?? null,
+        lastCommentIsReply: activity?.lastCommentIsReply ?? false,
+      };
+    });
 
   const filteredPosts = activeBoard
     ? feed.filter((p) => p.boardId === activeBoard)
@@ -316,7 +372,6 @@ function HomeContent() {
             sort={activeSort}
             now={now}
             createPostHref={createPostHref}
-            username={username}
           />
 
       </ForumShell>

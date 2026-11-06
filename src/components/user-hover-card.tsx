@@ -12,61 +12,13 @@ import {
 import { CalendarDays, Shield, Sparkles } from "lucide-react";
 import Link from "next/link";
 
-import { normaliseUsername } from "@/lib/auth/validation";
-import { createClient } from "@/lib/supabase/client";
-
-type UserProfile = {
-  username: string;
-  avatar_url: string | null;
-  role: "member" | "moderator" | "admin";
-  reaction_score: number;
-  created_at: string;
-};
+import { loadProfile, type UserProfile } from "@/lib/profiles";
+import { formatRole } from "@/lib/roles";
 
 const CARD_WIDTH = 300;
 const OPEN_DELAY_MS = 120;
 const CLOSE_DELAY_MS = 180;
 const VIEWPORT_MARGIN = 8;
-
-/**
- * Profile lookups are public (see the profiles RLS policy), so the card can
- * fetch them straight from the browser. Cache the promise per username so
- * re-hovering never repeats a request.
- */
-const profileCache = new Map<string, Promise<UserProfile | null>>();
-
-function loadProfile(username: string): Promise<UserProfile | null> {
-  const key = normaliseUsername(username);
-  const cached = profileCache.get(key);
-
-  if (cached) {
-    return cached;
-  }
-
-  const request = (async () => {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("username, avatar_url, role, reaction_score, created_at")
-        .eq("username", key)
-        .maybeSingle();
-
-      return error ? null : data;
-    } catch {
-      return null;
-    }
-  })();
-
-  profileCache.set(key, request);
-  void request.then((result) => {
-    if (result === null) {
-      profileCache.delete(key);
-    }
-  });
-
-  return request;
-}
 
 function formatJoined(createdAt: string): string {
   const date = new Date(createdAt);
@@ -337,9 +289,9 @@ export function UserHoverCard({
               {loading ? (
                 <span className="mt-1 block h-3 w-14 animate-pulse rounded bg-surface-muted" />
               ) : profile ? (
-                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[0.65rem] font-semibold capitalize text-muted">
+                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[0.65rem] font-semibold text-muted">
                   <Shield className="size-3" aria-hidden="true" />
-                  {profile.role}
+                  {formatRole(profile.role)}
                 </span>
               ) : null}
             </div>
