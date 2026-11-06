@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell, LogIn, Search, UserPlus, UserRound } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -221,15 +222,17 @@ export function SiteHeader() {
       <div className="relative mx-auto flex h-14 max-w-[90rem] items-center gap-3 px-3 sm:px-4">
         <Link
           aria-label="kaluwo home"
-          className="flex shrink-0 items-center gap-2"
+          className="flex shrink-0 items-center"
           href="/"
         >
-          <span className="grid size-8 place-items-center rounded-full bg-orange-700 text-sm font-bold text-white">
-            k
-          </span>
-          <span className="text-xl font-bold tracking-tight text-ink">
-            kaluwo
-          </span>
+          <Image
+            src="/logo.png"
+            alt="kaluwo"
+            width={1084}
+            height={238}
+            loading="eager"
+            className="h-7 w-auto invert dark:invert-0"
+          />
         </Link>
 
         {/* Below xl the bar sits in the flex row (its left edge is pinned to
