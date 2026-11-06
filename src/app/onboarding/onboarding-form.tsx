@@ -13,11 +13,9 @@ import { completeOnboarding } from "./actions";
 
 export function OnboardingForm({
   initialUsername,
-  email,
   userId,
 }: {
   initialUsername: string;
-  email: string | null;
   userId: string;
 }) {
   const router = useRouter();
@@ -83,13 +81,6 @@ export function OnboardingForm({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       {error ? <AuthMessage tone="error">{error}</AuthMessage> : null}
-
-      {email ? (
-        <p className="text-sm text-muted">
-          Verified by Google as{" "}
-          <strong className="font-semibold text-ink">{email}</strong>.
-        </p>
-      ) : null}
 
       <div>
         <label

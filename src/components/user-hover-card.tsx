@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { CalendarDays, Shield, Sparkles } from "lucide-react";
+import Link from "next/link";
 
 import { normaliseUsername } from "@/lib/auth/validation";
 import { createClient } from "@/lib/supabase/client";
@@ -265,7 +266,8 @@ export function UserHoverCard({
       <button
         ref={triggerRef}
         type="button"
-        aria-describedby={open ? cardId : undefined}
+        aria-expanded={open}
+        aria-controls={open ? cardId : undefined}
         onPointerEnter={(event) => {
           if (event.pointerType === "mouse") {
             scheduleOpen();
@@ -292,7 +294,8 @@ export function UserHoverCard({
         <div
           ref={cardRef}
           id={cardId}
-          role="tooltip"
+          role="dialog"
+          aria-label={`Profile card for ${displayName}`}
           onPointerEnter={(event) => {
             if (event.pointerType === "mouse") {
               clearCloseTimer();
@@ -303,6 +306,10 @@ export function UserHoverCard({
               scheduleClose();
             }
           }}
+          // The card holds a link, so focus moving into it must cancel the
+          // close scheduled by the trigger's blur.
+          onFocus={clearCloseTimer}
+          onBlur={scheduleClose}
           className="fixed z-50 w-[300px] max-w-[calc(100vw-1rem)] rounded-xl border border-line bg-surface p-4 text-left shadow-xl"
           style={{ top: 0, left: 0, visibility: "hidden" }}
         >
@@ -371,6 +378,16 @@ export function UserHoverCard({
               </p>
             </div>
           </div>
+
+          {profile ? (
+            <Link
+              href={`/profile/${encodeURIComponent(profile.username)}`}
+              onClick={() => setOpen(false)}
+              className="mt-3 block border-t border-line pt-2.5 text-xs font-semibold text-orange-700 hover:underline dark:text-orange-400"
+            >
+              View profile
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </>

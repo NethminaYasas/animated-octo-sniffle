@@ -126,6 +126,45 @@ export function useReactions(
   );
 }
 
+export type UserReaction = {
+  targetType: ReactionTargetType;
+  targetId: number;
+  kind: ReactionKind;
+};
+
+/** All reactions this member has left on this device. */
+export function loadReactionsForUser(username: string): UserReaction[] {
+  const member = username.trim().toLowerCase().normalize("NFC");
+  const store = parseStore(readRaw());
+  const reactions: UserReaction[] = [];
+
+  for (const [target, byUser] of Object.entries(store)) {
+    const kind = byUser[member];
+
+    // byUser is a plain object, so a username such as "constructor" would
+    // otherwise resolve to an inherited value.
+    if (!isReactionKind(kind)) {
+      continue;
+    }
+
+    const [targetType, rawId] = target.split(":");
+
+    if (targetType !== "post" && targetType !== "comment") {
+      continue;
+    }
+
+    const targetId = Number(rawId);
+
+    if (!Number.isFinite(targetId)) {
+      continue;
+    }
+
+    reactions.push({ targetType, targetId, kind });
+  }
+
+  return reactions;
+}
+
 /**
  * Adds, changes or removes one member's reaction. Passing null removes it.
  * The username is the member's canonical profile username, lowercased.

@@ -356,14 +356,19 @@ Apply these to every task.
   `next.config.ts` (`logging.serverFunctions: false`) so passwords and CAPTCHA
   tokens do not appear in terminal logs.
 - `src/proxy.ts` refreshes the Supabase session on every request (Next 16
-  renamed middleware to proxy). `/profile` is a server-rendered page and
-  redirects to `/login?next=/profile` when there is no session.
+  renamed middleware to proxy). `/profile` is the signed-in shortcut and
+  redirects to `/login?next=/profile` when there is no session, then to the
+  member's public `/profile/[username]` page.
+- Public profiles are server-rendered at `/profile/[username]` and can be read
+  without a session. They show only the username, stored avatar, role, status,
+  joined date and reaction score. The member's email address and Google photo
+  are never displayed; Google is only used to verify the account.
+- Profile activity is read from the local prototype stores (posts, comments and
+  reactions) until posting is database-backed.
 - Email/password confirmation is not used. `/auth/callback` exchanges the
   Google OAuth code and redirects new accounts to `/onboarding`. `/auth/confirm`
   still supports `token_hash` password-reset links if the email template is
   changed.
-- The profile page shows username, email, role, status, joined date and
-  reaction score.
 - `profiles.reaction_score` is maintained by recompute triggers on reactions
   and on relevant post changes (soft-delete, restore, author change, hard
   delete). It is not part of the authenticated column update grant, so members

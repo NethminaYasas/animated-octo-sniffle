@@ -195,7 +195,7 @@ src/
     forgot-password/  Reset request page and server action
     login/            Google + username login page and server action
     onboarding/       Google account username/password setup
-    profile/          Server-rendered member profile with reaction score
+    profile/          Public member profiles with activity and reaction score
     reset-password/   New-password page after the email link
     signup/           Invite-only registration page and server action
     globals.css       Tailwind styles and light/dark colour tokens

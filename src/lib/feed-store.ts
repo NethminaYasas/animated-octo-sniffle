@@ -96,6 +96,32 @@ export function saveComment(comment: SavedComment): boolean {
   });
 }
 
+/** Every visible comment on this device, across all threads. */
+export function loadAllComments(): SavedComment[] {
+  const all = readJson<Record<string, SavedComment[]>>(COMMENTS_KEY, {});
+
+  if (!all || typeof all !== "object" || Array.isArray(all)) {
+    return [];
+  }
+
+  const deleted = new Set(loadDeletedCommentIds());
+  const comments: SavedComment[] = [];
+
+  for (const list of Object.values(all)) {
+    if (!Array.isArray(list)) {
+      continue;
+    }
+
+    for (const comment of list) {
+      if (!deleted.has(comment.id)) {
+        comments.push(comment);
+      }
+    }
+  }
+
+  return comments;
+}
+
 export function loadSavedIds(): number[] {
   const ids = readJson<number[]>(SAVED_KEY, []);
   return Array.isArray(ids) ? ids : [];

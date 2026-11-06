@@ -4,7 +4,6 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { AuthShell } from "@/components/auth-shell";
-import { isInternalEmail } from "@/lib/auth/internal-email";
 import { createClient } from "@/lib/supabase/server";
 
 import { OnboardingForm } from "./onboarding-form";
@@ -79,15 +78,8 @@ async function OnboardingContent() {
     redirect("/profile");
   }
 
-  const email =
-    typeof claimsData.claims.email === "string" &&
-    !isInternalEmail(claimsData.claims.email)
-      ? claimsData.claims.email
-      : null;
-
   return (
     <OnboardingForm
-      email={email}
       initialUsername={profile.username}
       userId={userId}
     />
