@@ -1,4 +1,4 @@
-import { ClipboardList, ScrollText, ShieldAlert, Users } from "lucide-react";
+import { ClipboardList, ImageUp, ScrollText, ShieldAlert, Users } from "lucide-react";
 import Link from "next/link";
 
 import { getServerSession } from "@/lib/auth/server-user";
@@ -21,6 +21,12 @@ export default async function ModerationOverviewPage() {
       title: "Mod log",
       description: "Append-only record of every staff action.",
       Icon: ScrollText,
+    },
+    {
+      href: "/moderation/uploads",
+      title: "Uploads",
+      description: "Recent uploads, takedown and the hash blocklist.",
+      Icon: ImageUp,
     },
     {
       href: "/moderation/members",

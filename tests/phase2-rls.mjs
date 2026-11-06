@@ -686,11 +686,63 @@ async function main() {
     "ban expiry is enforced without a cron",
   );
 
-  const { data: myBans } = await memberB.client
-    .from("my_bans")
-    .select("reason, expires_at, lifted_at");
+  const { data: myBans, error: myBansError } = await memberB.client.rpc(
+    "my_bans",
+  );
+  assert.ifError(myBansError);
   assert(myBans.some((row) => row.reason === "Short test ban"));
-  assert(!Object.prototype.hasOwnProperty.call(myBans[0], "banned_by"));
+  assert(myBans.every((row) => row.user_id === memberB.id));
+  assert(
+    myBans.every(
+      (row) =>
+        !Object.prototype.hasOwnProperty.call(row, "banned_by") &&
+        !Object.prototype.hasOwnProperty.call(row, "banned_by_username"),
+    ),
+  );
+  if (myBans[0]) {
+    assert.deepEqual(
+      Object.keys(myBans[0]).sort(),
+      [
+        "created_at",
+        "expires_at",
+        "id",
+        "lift_reason",
+        "lifted_at",
+        "reason",
+        "user_id",
+      ],
+      "my_bans exposes exactly the safe columns",
+    );
+  }
+
+  // A member never sees another member's ban rows through the function.
+  const { data: memberAOwnBans } = await memberA.client.rpc("my_bans");
+  assert(
+    (memberAOwnBans ?? []).every((row) => row.user_id === memberA.id),
+    "member A only sees their own bans",
+  );
+
+  // Anonymous callers cannot execute either function.
+  expectError(
+    await anonClient.rpc("my_bans"),
+    "anonymous caller cannot call my_bans",
+  );
+  expectError(
+    await anonClient.rpc("my_warnings"),
+    "anonymous caller cannot call my_warnings",
+  );
+
+  // The base tables hide every row from members, so the moderator column is
+  // unreachable even when requested explicitly.
+  const { data: baseBanRows } = await memberB.client
+    .from("member_bans")
+    .select("moderator_id");
+  assert.equal((baseBanRows ?? []).length, 0);
+  const { data: baseWarningRows } = await memberA.client
+    .from("member_warnings")
+    .select("moderator_id");
+  assert.equal((baseWarningRows ?? []).length, 0);
+  pass("members cannot read the moderator column by any member-visible path");
 
   const { data: memberBaseBans } = await memberB.client
     .from("member_bans")
@@ -702,33 +754,18 @@ async function main() {
     .select("reason, banned_by:profiles!member_bans_banned_by_fkey(username)")
     .eq("user_id", memberB.id);
   assert(staffBans.some((row) => row.reason === "Short test ban"));
+  pass("staff keep full base-table access to the issuing-moderator column");
 
+  // The removed views are gone from the API schema cache.
   expectError(
-    await memberB.client
-      .from("my_bans")
-      .update({ reason: "Tampered ban reason" })
-      .eq("user_id", memberB.id),
-    "member cannot update their own ban view",
+    await memberB.client.from("my_bans").select("*"),
+    "the my_bans view no longer exists",
   );
   expectError(
-    await memberA.client
-      .from("my_warnings")
-      .insert({
-        user_id: memberB.id,
-        reason: "Fake warning",
-        acknowledged_at: null,
-      })
-      .select(),
-    "member cannot insert fake warnings through the safe view",
+    await memberA.client.from("my_warnings").select("*"),
+    "the my_warnings view no longer exists",
   );
-  expectError(
-    await memberA.client
-      .from("my_bans")
-      .delete()
-      .eq("user_id", memberA.id),
-    "member cannot delete through the safe ban view",
-  );
-  pass("member ban view hides the issuing moderator; staff see it");
+  pass("views are gone; member moderation data flows through safe RPC functions");
 
   expectOk(
     await moderator.client.rpc("moderate_unban_user", {
@@ -764,16 +801,46 @@ async function main() {
   )[0];
   assert.equal(warnAgain.changed, false);
 
-  const { data: myWarnings } = await memberA.client
-    .from("my_warnings")
-    .select("id, reason, acknowledged_at");
+  const { data: myWarnings, error: myWarningsError } = await memberA.client.rpc(
+    "my_warnings",
+  );
+  assert.ifError(myWarningsError);
   assert(myWarnings.some((row) => row.reason === "Phase 2 warning test"));
-  assert(!Object.prototype.hasOwnProperty.call(myWarnings[0], "moderator_id"));
+  assert(myWarnings.every((row) => row.user_id === memberA.id));
+  assert(
+    myWarnings.every((row) => !Object.prototype.hasOwnProperty.call(row, "moderator_id")),
+    "my_warnings never exposes the moderator id",
+  );
+  if (myWarnings[0]) {
+    assert.deepEqual(
+      Object.keys(myWarnings[0]).sort(),
+      ["acknowledged_at", "created_at", "id", "reason", "user_id"],
+      "my_warnings exposes exactly the safe columns",
+    );
+  }
+
+  // No member sees another member's warnings through the function.
+  const { data: memberBWarnings } = await memberB.client.rpc("my_warnings");
+  assert((memberBWarnings ?? []).every((row) => row.user_id === memberB.id));
 
   const { data: memberBaseWarnings } = await memberA.client
     .from("member_warnings")
     .select("id");
   assert.equal(memberBaseWarnings.length, 0);
+
+  const { data: staffWarnings } = await moderator.client
+    .from("member_warnings")
+    .select(
+      "reason, moderator:profiles!member_warnings_moderator_id_fkey(username)",
+    )
+    .eq("user_id", memberA.id);
+  assert(
+    staffWarnings.some(
+      (row) => row.moderator?.username === admin.username,
+    ),
+    "staff still see the issuing moderator through the base table",
+  );
+  pass("staff still see the issuing moderator through the base table");
 
   const warningId = myWarnings.find((row) => row.reason === "Phase 2 warning test").id;
   const ack = await memberA.client.rpc("acknowledge_warning", {

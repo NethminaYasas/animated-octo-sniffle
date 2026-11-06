@@ -3,10 +3,12 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { isBanActive } from "@/lib/ban";
+import type { Attachment, UploadState } from "@/lib/attachments";
 import {
   loadPostReactionSummaries,
   loadThreadCommentPage,
 } from "@/lib/forum/comments";
+import { loadAttachments } from "@/lib/media/attachments";
 import type {
   OpeningPostView,
   ThreadView,
@@ -159,10 +161,18 @@ async function ThreadPageContent({
   };
 
   const commentPage = await loadThreadCommentPage(supabase, threadId, null);
-  const reactionSummaries = await loadPostReactionSummaries(supabase, [
+  const attachmentPostIds = [
     rawOpening.id,
     ...commentPage.comments.map((comment) => comment.id),
+  ];
+  const [reactionSummaries, attachmentLoad] = await Promise.all([
+    loadPostReactionSummaries(supabase, attachmentPostIds),
+    loadAttachments(supabase, attachmentPostIds, isStaff),
   ]);
+  const attachmentsByPost: Record<number, Attachment[]> = Object.fromEntries(
+    attachmentLoad.byPost,
+  );
+  const uploadStates: Record<string, UploadState> = attachmentLoad.uploadStates;
 
   const thread: ThreadView = {
     id: rawThread.id,
@@ -201,6 +211,8 @@ async function ThreadPageContent({
       nextCommentCursor={commentPage.nextCursor}
       commentTotal={rawThread.reply_count}
       viewer={viewer}
+      initialAttachments={attachmentsByPost}
+      uploadStates={uploadStates}
     />
   );
 }

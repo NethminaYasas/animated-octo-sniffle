@@ -14,6 +14,13 @@ export const SECURITY_EVENTS = [
   "oauth.succeeded",
   "oauth.failed",
   "forum.rate_limited",
+  "upload.accepted",
+  "upload.rate_limited",
+  "upload.blocked_hash",
+  "upload.provider_failed",
+  "upload.provider_delete_failed",
+  "upload.orphaned",
+  "upload.attachment_failed",
 ] as const;
 
 export type SecurityEventName = (typeof SECURITY_EVENTS)[number];

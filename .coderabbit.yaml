@@ -47,6 +47,20 @@ reviews:
         Check that staff/admin pages are server-gated by the database role, not
         by client state, and that forms surface RPC errors without suggesting
         that an action succeeded.
+    - path: "src/lib/media/**"
+      instructions: |
+        Scrutinise the upload pipeline: the browser must never reach the
+        provider directly, file type must come from magic bytes (never the
+        extension or client MIME), the size cap must be enforced while
+        streaming, image metadata (EXIF/GPS) must be stripped before upload,
+        the hash blocklist must be checked, provider errors must not leak to
+        users, and no uploads row may be left half-written on failure. Check
+        that the provider stays behind the UploadProvider interface.
+    - path: "src/app/api/uploads/**"
+      instructions: |
+        Check authentication, effective-ban handling, same-origin enforcement
+        for cookie-authenticated requests, streaming limits, quota ordering,
+        and that the route never trusts client-supplied MIME types or filenames.
     - path: "src/lib/crypto/**"
       instructions: |
         Phase 5 DM crypto. Scrutinise key generation and storage, private-key

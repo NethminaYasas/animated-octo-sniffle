@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, Check, Send } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
+import { UploadAttachButton, type PendingAttachment } from "@/components/upload-attach-button";
+
 import { BackHomeButton } from "@/components/back-home-button";
 import { ForumShell } from "@/components/forum-shell";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -162,6 +164,7 @@ function CreatePostForm({ isNewMember }: { isNewMember: boolean }) {
   const [boardId, setBoardId] = useState("general");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -204,6 +207,7 @@ function CreatePostForm({ isNewMember }: { isNewMember: boolean }) {
         title: trimmedTitle,
         content,
         captchaToken,
+        uploadIds: attachments.map((attachment) => attachment.id),
       });
 
       if (!result.ok) {
@@ -214,7 +218,11 @@ function CreatePostForm({ isNewMember }: { isNewMember: boolean }) {
         return;
       }
 
-      toast.success("Posted!");
+      if (result.attachmentsFailed) {
+        toast.warning("Posted, but the attachments couldn't be linked");
+      } else {
+        toast.success("Posted!");
+      }
       router.push(`/t/${result.threadId}`);
       router.refresh();
     } catch {
@@ -274,6 +282,13 @@ function CreatePostForm({ isNewMember }: { isNewMember: boolean }) {
             void handleSubmitPost();
           }}
         />
+        <div className="mt-2">
+          <UploadAttachButton
+            attachments={attachments}
+            onChange={setAttachments}
+            disabled={submitting}
+          />
+        </div>
       </div>
 
       {isNewMember ? (

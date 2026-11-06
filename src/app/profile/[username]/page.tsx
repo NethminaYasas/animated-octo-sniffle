@@ -146,22 +146,45 @@ async function PublicProfileContent({ params }: ProfilePageProps) {
 
   if (isOwnProfile) {
     const [warningResponse, banResponse] = await Promise.all([
-      supabase
-        .from("my_warnings")
-        .select("id, reason, created_at, acknowledged_at")
-        .eq("user_id", profile.id)
-        .order("created_at", { ascending: false })
-        .limit(20),
-      supabase
-        .from("my_bans")
-        .select("id, reason, expires_at, created_at, lifted_at, lift_reason")
-        .eq("user_id", profile.id)
-        .order("created_at", { ascending: false })
-        .limit(20),
+      supabase.rpc("my_warnings"),
+      supabase.rpc("my_bans"),
     ]);
 
-    warnings = (warningResponse.data ?? []) as WarningRow[];
-    bans = (banResponse.data ?? []) as BanRow[];
+    warnings = (
+      (warningResponse.data ?? []) as Array<{
+        id: number;
+        reason: string;
+        created_at: string;
+        acknowledged_at: string | null;
+      }>
+    )
+      .slice(0, 20)
+      .map((row) => ({
+        id: row.id,
+        reason: row.reason,
+        created_at: row.created_at,
+        acknowledged_at: row.acknowledged_at,
+      }));
+
+    bans = (
+      (banResponse.data ?? []) as Array<{
+        id: number;
+        reason: string;
+        expires_at: string | null;
+        created_at: string;
+        lifted_at: string | null;
+        lift_reason: string | null;
+      }>
+    )
+      .slice(0, 20)
+      .map((row) => ({
+        id: row.id,
+        reason: row.reason,
+        expires_at: row.expires_at,
+        created_at: row.created_at,
+        lifted_at: row.lifted_at,
+        lift_reason: row.lift_reason,
+      }));
   } else if (viewerIsStaff) {
     const [warningResponse, banResponse] = await Promise.all([
       supabase

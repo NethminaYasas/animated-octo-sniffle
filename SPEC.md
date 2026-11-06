@@ -6,11 +6,12 @@ keys or personal data may be committed.
 
 **Current status:** Authentication, the database schema, Phase 1
 (database-backed posting, comments, reactions, notifications, cursor
-pagination and posting rate limits) and Phase 2 (roles, moderation, mod log,
-reports, hashed invite administration, warnings and comment pagination) are
-built in the repository. The migrations in `supabase/migrations/` still have
-to be applied to the Supabase project. Uploads, modmail and end-to-end
-encrypted DMs are the next phases. Quotes remain a browser-local clipboard;
+pagination and posting rate limits), Phase 2 (roles, moderation, mod log,
+reports, hashed invite administration, warnings and comment pagination) and
+Phase 3 (forum uploads with EXIF stripping, quotas, a hash blocklist and
+audited removal) are built in the repository. The migrations in
+`supabase/migrations/` still have to be applied to the Supabase project.
+Modmail and end-to-end encrypted DMs are the next phases. Quotes remain a browser-local clipboard;
 saved posts remain a browser-local bookmark.
 
 ## 1. What kaluwo is
@@ -57,8 +58,8 @@ configurable.
 
 1. **Auth** — Google sign-in, invite-only username sign-up, log in, log out,
    password reset, profile page
-2. **Database tables + Row Level Security** — profiles, boards, threads,
-   posts, reactions, reports, media_assets
+2. **Database tables + Row Level Security** - profiles, boards, threads,
+   posts, reactions, reports, uploads
 3. **Read-only forum** — board list, thread list and thread page, with
    pagination (20 to 50 posts per page)
 4. **Posting** — create thread and reply, quote, soft-delete
@@ -153,19 +154,36 @@ choosing a different reaction updates the existing row
 - `status` — `open` / `resolved` / `dismissed`
 - `created_at`
 
-### `media_assets`
+### `uploads`
 
-- `id`
-- `owner_id`
-- `post_id` — nullable until the post is saved
-- `kind` — `image` / `video` / `audio`
+- `id` — uuid
+- `uploader_id`
 - `provider` — `catbox`
-- `file_key` — the catbox filename
+- `provider_file_id` — the catbox filename
 - `url`
 - `mime_type`
 - `size_bytes`
+- `raw_sha256` — hash of the uploaded bytes as received
+- `sha256` — hash after metadata stripping
 - `status` — `active` / `removed`
+- `removal_reason`, `removed_at`, `removed_by`
 - `created_at`
+
+Members and anonymous visitors read only `id`, `url`, `mime_type`,
+`size_bytes` and `status` through the `public_uploads` view. Staff read the
+full row (including hashes, uploader and removal metadata) through
+`staff_uploads`. There are no direct client INSERT/UPDATE/DELETE grants.
+
+### `post_uploads`
+
+- `post_id`, `upload_id` — a post may reference at most 8 uploads, all owned
+  by the post's author. Enforced by `link_uploads_to_post()` and a backstop
+  trigger.
+
+### `upload_hash_blocks`
+
+- `sha256` — blocked raw or stripped hash
+- `reason`, `blocked_by`, `created_at`
 
 ### `invite_codes`
 
@@ -199,48 +217,59 @@ investigation uses the IP, user agent and account instead.
 
 ## 6. Media system (catbox.moe)
 
-- Catbox is used for images, videos and audio. Permanent uploads are capped
-  at **200 MB per file** by catbox.
-- **All uploads go through a server-side route.** The catbox userhash is a
-  secret kept in `.env.local` (`CATBOX_USERHASH`) and must never reach the
-  browser or be committed. Use the account userhash (not anonymous uploads)
-  so files can be deleted later.
-- Put all provider code in one module, for example `src/lib/storage/`,
-  exposing `uploadMedia(file, kind)` and `deleteMedia(fileKey)`. Store only the
-  file key and a provider column in the database so the provider can be
-  swapped later without rewriting posts.
+- Catbox is used for images, audio and short videos. It is a free third-party
+  host: files are **public by URL**, have **no retention guarantee**, and their
+  terms allow deduplication/removal and require prior approval for commercial
+  use. Never upload private content. DM attachments are out of scope.
+- **All uploads go through a server-side route** (`POST /api/uploads`), never
+  from the browser. `CATBOX_USERHASH` is an optional server-only secret in
+  `.env.local`; without it, staff removal hides a file in the forum but cannot
+  delete it at catbox.
+- All provider code lives in `src/lib/media/provider.ts` behind an
+  `UploadProvider` interface (`upload`, `delete`, `publicHostname`), so R2 or
+  Supabase Storage can replace catbox without touching the route or UI.
 - Limits are configurable via env, with these defaults:
   - images: **10 MB**
   - audio: **30 MB**
-  - videos: **100 MB** (Cloudflare's free plan limits request bodies to about
-    100 MB)
+  - videos: **50 MB** (kept below Cloudflare's proxied request-body limits)
 - Allowed types:
-  - images: `jpg`, `png`, `webp`, `gif`
-  - audio: `mp3`, `ogg`, `m4a`, `wav`
+  - images: `jpeg`, `png`, `webp`, `gif`
+  - audio: `mp3`, `ogg`
   - video: `mp4`, `webm`
-- Verify the real file type from the file's bytes, not the extension or the
+- Verify the real file type from magic bytes, never the extension or the
   browser-provided MIME type. Reject everything else, especially executables
   and archives.
-- Images:
-  - resize to max 1600 px wide
-  - convert to WebP (except animated GIFs)
-  - strip EXIF metadata (GPS location) before uploading
-- Videos and audio: validate type and size only for now. Do not add
-  server-side transcoding yet.
-- Rate limits: uploads per user per day and per IP. Stricter for new accounts.
-- Logged-in, non-banned users only. Server-side checks, not just UI checks.
-- Rendering:
-  - images: plain `<img loading="lazy">` with fixed width/height. Do **not**
-    use `next/image`, so the server does not proxy images.
-  - videos: `<video controls preload="metadata">`
-  - audio: `<audio controls preload="none">`
-  - never autoplay
-- When a post or user is deleted by a moderator, also delete the media from
-  catbox via `deleteMedia` and set `media_assets.status` to `removed`.
-- Allow catbox's file domain in the Content Security Policy `img-src` and
-  `media-src`. Confirm the exact domain from a real uploaded URL; do not
-  guess it.
-- Catbox files are public. Never use it for private content.
+- Enforce the size limit while streaming: stop writing to disk as soon as the
+  per-type cap is passed, then reject.
+- Images: decode with `sharp`, apply EXIF orientation, re-encode, which drops
+  all metadata including GPS. Cap decoded pixels (40 MP) and animated GIF
+  frames (300). Reject images with data appended after the container end.
+- Videos and audio: validate type and size only. No transcoding, so container
+  metadata is not stripped.
+- Rate limits and quotas: atomic per-user counters. `new_member` 3 per 15
+  minutes / 20 per day / 25 MB per day; `member` and `senior_member` 10 / 200 /
+  1 GB; staff 50 / 1000 / 10 GB. The route also caps in-flight uploads.
+- Logged-in, non-banned users only, checked on the server. Cookie-authenticated
+  requests must come from the same origin.
+- Database: `uploads` and `post_uploads`. Members/anon read only the safe
+  columns through `public_uploads`; staff read `staff_uploads`. No direct
+  client writes. A post may reference at most 8 uploads owned by its author,
+  enforced by RPC plus a backstop trigger.
+- Rendering: plain `<img loading="lazy">`, `<video controls
+  preload="metadata">`, `<audio controls preload="metadata">`. Never autoplay
+  and do not use `next/image`. Media renders only for URLs that exist in
+  `uploads` with `status = 'active'`; any other media URL renders as a plain
+  link.
+- CSP ships as `Content-Security-Policy-Report-Only` with `img-src`/`media-src`
+  limited to `'self' data: https://files.catbox.moe`, and violations reported to
+  `/api/csp-reports`. Enforce it once the reports are clean.
+- Moderation: removal is an audited RPC (`upload.remove`, reason required). The
+  file is hidden everywhere; members see a bare placeholder, staff see the
+  reason and actor. A SHA-256 blocklist (staff block, admin unblock) stops
+  re-uploads of a known-bad file, matching either the raw or stripped hash.
+  Members can report an attachment through the existing report system.
+- Unlinked uploads are expired after 24 hours by `expire_unlinked_uploads()`
+  and a logged `system` action.
 
 ## 7. Security rules
 
@@ -317,11 +346,12 @@ Apply these to every task.
   soft-delete and hard-delete. Authors do not edit thread titles.
 - `reactions.kind` is the only column members may update, granted at the
   column level, so a reaction cannot be moved to another post.
-- Reports are unique per `(post_id, reporter_id)`; reporting the same post
-  twice is rejected by the unique constraint instead of creating duplicates.
-- `media_assets` is unique per `(provider, file_key)`. Deleting a post sets
-  `post_id` to null rather than deleting the asset row, so cleanup can still
-  find the catbox file.
+- Reports are unique per open `(target, reporter_id)`; reporting the same
+  target twice is rejected by the unique constraint instead of creating
+  duplicates.
+- `uploads` are unique by `id`; a `post_uploads` pair is unique and a post can
+  link at most 8 uploads. Removal sets `status = 'removed'` and keeps the row so
+  the placeholder and the moderation trail survive.
 - `author_id` on threads/posts is nullable and `on delete set null`, so
   deleting an auth user keeps the content as an anonymous post.
 - RLS helpers are `SECURITY DEFINER` with a pinned `search_path`:
@@ -562,3 +592,34 @@ Apply these to every task.
   and idempotent batch creation are admin RPCs.
 - Warnings are stored in `member_warnings`, shown on the member profile with an
   acknowledge action, and do not create a bell notification in Phase 2.
+
+## Implementation decisions (Phase 3: uploads)
+
+- Catbox sits behind `UploadProvider` in `src/lib/media/provider.ts` so R2 or
+  Supabase Storage can replace it later. The route and UI never import catbox
+  directly.
+- The browser uploads to same-origin `POST /api/uploads`; the server streams the
+  multipart body to a temp file, detects the type from magic bytes, applies the
+  per-type cap mid-stream, strips image metadata, checks the hash blocklist,
+  consumes the quota, then uploads server-to-server to catbox.
+- `experimental.proxyClientMaxBodySize` is raised to 52 MB because the proxy
+  buffers request bodies at 10 MB by default and would otherwise truncate
+  videos before the route could validate them.
+- `uploads` stores `raw_sha256` (as received) and `sha256` (after stripping);
+  the blocklist matches either, so a re-encoded known-bad file is still caught.
+- Members and anonymous visitors read the safe `public_uploads` view only;
+  staff read `staff_uploads`. There are no direct client writes.
+- A post may link at most 8 uploads, all owned by its author:
+  `link_uploads_to_post()` requires `auth.uid() = post author`, and a trigger
+  re-checks the relationship so even the service role cannot create a
+  cross-owner link.
+- Media renders only when the URL exists in `uploads` with `status = 'active'`;
+  any other media URL becomes a plain link. That single rule replaces
+  removed-URL bookkeeping and prevents hotlinked media rendering.
+- Removal is an audited RPC with a required reason. It never rolls back if the
+  best-effort provider delete fails. Members see a bare placeholder; staff see
+  the reason and actor.
+- The hash blocklist is staff-write/admin-unblock, and both are mod-logged.
+- `my_bans` and `my_warnings` became `SECURITY DEFINER` functions (pinned
+  `search_path`) so the Supabase linter no longer reports security-definer
+  views, while members still cannot read the issuing moderator.

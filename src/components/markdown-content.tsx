@@ -9,6 +9,8 @@ import remarkGfm from "remark-gfm";
 
 import { EmbedCard } from "@/components/embed";
 import { resolveEmbed } from "@/lib/embeds";
+import { isMediaUrl } from "@/lib/media-hosts";
+import type { UploadState } from "@/lib/attachments";
 
 const INLINE_SIZE_CLASSES: Record<string, string> = {
   sm: "text-size-sm",
@@ -96,18 +98,24 @@ function rehypeMentions() {
 }
 
 /**
- * Raw HTML is parsed but sanitised. The only extra element allowed is a span
- * carrying data-size="sm|md|lg|xl"; the span renderer ignores other attributes.
+ * Raw HTML is parsed but sanitised. Media elements (img/video/audio) are
+ * added so that URLs uploaded through the app render inline; the renderers
+ * additionally require a host from MEDIA_HOSTS and an active upload row,
+ * anything else becomes a plain link.
  */
 const sanitizeSchema: SanitizeOptions = {
   ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames ?? []), "span"],
+  tagNames: [...(defaultSchema.tagNames ?? []), "span", "img", "video", "audio", "source"],
   attributes: {
     ...defaultSchema.attributes,
     span: [
       ["dataSize", "sm", "md", "lg", "xl"],
       ["dataMention", "true"],
     ],
+    img: ["src", "alt", "title", "loading"],
+    video: ["src", "controls", "preload", "width", "height"],
+    audio: ["src", "controls", "preload"],
+    source: ["src", "type"],
   },
 };
 
@@ -145,11 +153,73 @@ function standaloneLinkUrl(node?: Element): string | null {
   return typeof href === "string" ? href : null;
 }
 
+function renderMedia(
+  tag: "img" | "video" | "audio",
+  src: string | undefined,
+  uploadStates: Record<string, UploadState | undefined> | undefined,
+  alt?: string | undefined,
+) {
+  if (!src || !isMediaUrl(src)) {
+    // Not a host we trust: render as a plain link.
+    return src ? <a href={src}>{alt ?? src}</a> : null;
+  }
+
+  const state = uploadStates?.[src];
+
+  if (state === "removed") {
+    return (
+      <span className="upload-removed">
+        This attachment was removed by a moderator.
+      </span>
+    );
+  }
+
+  if (state !== "active") {
+    // Not an upload we know about (hotlinked or pasted): link it.
+    return <a href={src}>{alt ?? src}</a>;
+  }
+
+  if (tag === "img") {
+    // Attachments come from our own upload pipeline and are the only remote
+    // images the app renders.
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={alt ?? ""}
+        loading="lazy"
+        className="max-h-96 w-auto max-w-full rounded-lg border border-line"
+      />
+    );
+  }
+
+  if (tag === "video") {
+    return (
+      <video
+        src={src}
+        controls
+        preload="metadata"
+        className="max-h-96 w-full max-w-2xl rounded-lg border border-line"
+      />
+    );
+  }
+
+  return <audio src={src} controls preload="metadata" className="w-full max-w-xl" />;
+}
+
 /**
  * Safe by default: raw HTML is parsed and then sanitised, links are restricted
  * by react-markdown's URL transform, and embeds are whitelisted providers only.
+ * Media renders only when it is an active upload row; anything else becomes a
+ * plain link.
  */
-export function MarkdownContent({ children }: { children: string }) {
+export function MarkdownContent({
+  children,
+  uploadStates,
+}: {
+  children: string;
+  uploadStates?: Record<string, UploadState | undefined>;
+}) {
   return (
     <div className="markdown-body">
       <ReactMarkdown
@@ -199,6 +269,17 @@ export function MarkdownContent({ children }: { children: string }) {
               .join(" ");
 
             return <span className={className || undefined}>{children}</span>;
+          },
+          img: ({ src, alt }) =>
+            renderMedia("img", typeof src === "string" ? src : undefined, uploadStates,
+              typeof alt === "string" ? alt : undefined),
+          video: ({ src }) =>
+            renderMedia("video", typeof src === "string" ? src : undefined, uploadStates),
+          audio: ({ src }) =>
+            renderMedia("audio", typeof src === "string" ? src : undefined, uploadStates),
+          source: ({ src, type }) => {
+            // A bare <source> has no playable parent here; render as a link.
+            return src ? <a href={typeof src === "string" ? src : undefined}>{type ?? src}</a> : null;
           },
         }}
       >

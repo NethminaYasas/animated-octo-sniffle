@@ -66,6 +66,12 @@ export default async function ModerationLayout({
             Mod log
           </Link>
           <Link
+            href="/moderation/uploads"
+            className="rounded-full bg-surface-muted px-3 py-1.5 text-xs font-semibold text-muted hover:text-ink"
+          >
+            Uploads
+          </Link>
+          <Link
             href="/moderation/members"
             className="rounded-full bg-surface-muted px-3 py-1.5 text-xs font-semibold text-muted hover:text-ink"
           >

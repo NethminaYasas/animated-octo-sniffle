@@ -10,13 +10,15 @@ export function ReportButton({
   targetType,
   postId,
   targetUserId,
+  uploadId,
   authorId,
   currentUserId,
   label = "Report",
 }: {
-  targetType: "post" | "user";
+  targetType: "post" | "user" | "upload";
   postId?: number;
   targetUserId?: string;
+  uploadId?: string;
   authorId?: string | null;
   currentUserId: string | null;
   label?: string;
@@ -28,7 +30,8 @@ export function ReportButton({
 
   const isOwn =
     (targetType === "post" && authorId && authorId === currentUserId) ||
-    (targetType === "user" && targetUserId === currentUserId);
+    (targetType === "user" && targetUserId === currentUserId) ||
+    (targetType === "upload" && authorId === currentUserId);
 
   if (!currentUserId || isOwn) {
     return null;
@@ -47,6 +50,7 @@ export function ReportButton({
         targetType,
         postId,
         targetUserId,
+        uploadId,
         reason,
       });
 

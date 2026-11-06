@@ -2,6 +2,8 @@ import "server-only";
 
 import sanitizeHtml from "sanitize-html";
 
+import { isMediaUrl } from "@/lib/media-hosts";
+
 const ALLOWED_TAGS = [
   "p",
   "div",
@@ -28,9 +30,52 @@ const ALLOWED_TAGS = [
   "h5",
   "h6",
   "span",
+  "img",
+  "video",
+  "audio",
+  "source",
 ];
 
 const INLINE_SIZES = new Set(["sm", "md", "lg", "xl"]);
+
+/**
+ * Keeps a media tag only when its src is an https URL on an upload host,
+ * otherwise rewrites it to a plain text link (matching the render path).
+ */
+function mediaTag(
+  tag: "img" | "video" | "audio" | "source",
+  attribs: Record<string, string | undefined>,
+  allowedAttrs: string[],
+): { tagName: string; attribs: Record<string, string> } {
+  const src = attribs.src?.trim();
+
+  if (!src || !isMediaUrl(src)) {
+    return src
+      ? { tagName: "a", attribs: { href: src, rel: "noopener noreferrer", target: "_blank" } }
+      : { tagName: "span", attribs: {} };
+  }
+
+  const next: Record<string, string> = { src };
+
+  for (const attribute of allowedAttrs) {
+    const value = attribs[attribute]?.trim();
+
+    if (value !== undefined && value !== "") {
+      next[attribute] = value;
+    }
+  }
+
+  if (tag === "video" || tag === "audio") {
+    next.controls = "";
+    next.preload = next.preload ?? "metadata";
+  }
+
+  if (tag === "img") {
+    next.loading = next.loading ?? "lazy";
+  }
+
+  return { tagName: tag, attribs: next };
+}
 
 /**
  * Server-side allowlist sanitizer for rich-text post and comment HTML.
@@ -48,16 +93,20 @@ export function sanitiseRichText(input: string): string {
 
   return sanitizeHtml(dirty, {
     allowedTags: ALLOWED_TAGS,
-    allowedAttributes: {
-      a: ["href", "title", "target", "rel"],
-      span: ["data-size"],
-    },
     allowedSchemes: ["http", "https", "mailto"],
     allowedSchemesByTag: {
       a: ["http", "https", "mailto"],
     },
     allowProtocolRelative: false,
     disallowedTagsMode: "discard",
+    allowedAttributes: {
+      a: ["href", "title", "target", "rel"],
+      span: ["data-size"],
+      img: ["src", "alt", "title", "loading"],
+      video: ["src", "controls", "preload"],
+      audio: ["src", "controls", "preload"],
+      source: ["src", "type"],
+    },
     transformTags: {
       a: (_tagName, attribs) => {
         const href = attribs.href?.trim();
@@ -88,6 +137,12 @@ export function sanitiseRichText(input: string): string {
 
         return { tagName: "span", attribs: next };
       },
+      // Media is only accepted from the upload host. Anything else becomes a
+      // plain text link, matching the render path.
+      img: (_tagName, attribs) => mediaTag("img", attribs, ["alt", "title", "loading"]),
+      video: (_tagName, attribs) => mediaTag("video", attribs, ["controls", "preload"]),
+      audio: (_tagName, attribs) => mediaTag("audio", attribs, ["controls", "preload"]),
+      source: (_tagName, attribs) => mediaTag("source", attribs, ["type"]),
     },
   });
 }

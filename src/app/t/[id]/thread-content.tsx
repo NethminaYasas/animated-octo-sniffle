@@ -14,6 +14,8 @@ import { Toaster, toast } from "sonner";
 
 import { BackHomeButton } from "@/components/back-home-button";
 import { ForumShell } from "@/components/forum-shell";
+import { UploadAttachButton, type PendingAttachment } from "@/components/upload-attach-button";
+import { AttachmentGallery } from "@/components/attachment-gallery";
 import { LoginGate } from "@/components/login-gate";
 import { MarkdownContent } from "@/components/markdown-content";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -40,6 +42,7 @@ import { addQuote } from "@/lib/quotes";
 import { emptyReactionCounts } from "@/lib/reactions";
 import { hasRichText } from "@/lib/rich-text";
 import { formatRelativeTime } from "@/lib/time";
+import type { Attachment, UploadState } from "@/lib/attachments";
 
 type ReplyTarget = { id: number; author: string };
 
@@ -112,6 +115,8 @@ export default function ThreadPageClient({
   nextCommentCursor: initialNextCursor,
   commentTotal,
   viewer,
+  initialAttachments,
+  uploadStates: initialUploadStates,
 }: {
   thread: ThreadView;
   openingPost: OpeningPostView;
@@ -120,10 +125,18 @@ export default function ThreadPageClient({
   nextCommentCursor: string | null;
   commentTotal: number;
   viewer: ThreadViewer | null;
+  initialAttachments: Record<number, Attachment[]>;
+  uploadStates: Record<string, UploadState>;
 }) {
   const router = useRouter();
   const [comments, setComments] = useState(initialComments);
   const [reactions, setReactions] = useState(initialReactions);
+  const [attachmentsByPost, setAttachmentsByPost] =
+    useState(initialAttachments);
+  const [uploadStates, setUploadStates] = useState(initialUploadStates);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    PendingAttachment[]
+  >([]);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [totalComments, setTotalComments] = useState(commentTotal);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -139,6 +152,37 @@ export default function ThreadPageClient({
   const setComposer = useCallback((element: HTMLDivElement | null) => {
     composerRef.current = element;
   }, []);
+
+  const setAttachmentStatus = useCallback(
+    (id: string, status: "active" | "removed") => {
+      setAttachmentsByPost((current) => {
+        const next: Record<number, Attachment[]> = {};
+
+        for (const [postId, list] of Object.entries(current)) {
+          next[Number(postId)] = list.map((attachment) =>
+            attachment.id === id ? { ...attachment, status } : attachment,
+          );
+        }
+
+        return next;
+      });
+
+      setUploadStates((current) => {
+        const next = { ...current };
+
+        for (const list of Object.values(attachmentsByPost)) {
+          for (const attachment of list) {
+            if (attachment.id === id && attachment.url) {
+              next[attachment.url] = status;
+            }
+          }
+        }
+
+        return next;
+      });
+    },
+    [attachmentsByPost],
+  );
 
   const isNewMember = viewer?.role === "new_member";
   const isStaff = Boolean(
@@ -229,6 +273,8 @@ export default function ThreadPageClient({
     let cursor: string | null = initialNextCursor;
     const collected: ThreadComment[] = [];
     const reactionUpdates: ThreadReactions = {};
+    const attachmentUpdates: Record<number, Attachment[]> = {};
+    const stateUpdates: Record<string, UploadState> = {};
 
     const run = async () => {
       for (let page = 0; page < 20 && cursor; page += 1) {
@@ -243,6 +289,8 @@ export default function ThreadPageClient({
 
         collected.push(...result.comments);
         Object.assign(reactionUpdates, result.reactions);
+        Object.assign(attachmentUpdates, result.attachments);
+        Object.assign(stateUpdates, result.uploadStates);
         cursor = result.nextCursor;
 
         if (result.comments.some((comment) => comment.id === targetId)) {
@@ -256,6 +304,8 @@ export default function ThreadPageClient({
 
       setComments((current) => mergeComments(current, collected));
       setReactions((current) => ({ ...current, ...reactionUpdates }));
+      setAttachmentsByPost((current) => ({ ...current, ...attachmentUpdates }));
+      setUploadStates((current) => ({ ...current, ...stateUpdates }));
       setNextCursor(cursor);
       window.setTimeout(scrollToTarget, 60);
     };
@@ -299,6 +349,11 @@ export default function ThreadPageClient({
 
       setComments((current) => mergeComments(current, result.comments));
       setReactions((current) => ({ ...current, ...result.reactions }));
+      setAttachmentsByPost((current) => ({
+        ...current,
+        ...result.attachments,
+      }));
+      setUploadStates((current) => ({ ...current, ...result.uploadStates }));
       setNextCursor(result.nextCursor);
     } catch {
       toast.error("Couldn't load more comments", {
@@ -333,6 +388,7 @@ export default function ThreadPageClient({
         content: body,
         replyToPostId: replyTarget?.id ?? null,
         captchaToken,
+        uploadIds: pendingAttachments.map((attachment) => attachment.id),
       });
 
       if (!result.ok) {
@@ -341,6 +397,41 @@ export default function ThreadPageClient({
         });
         captchaRef.current?.reset();
         return;
+      }
+
+      const seededAttachments: Attachment[] = pendingAttachments.map(
+        (attachment) => ({
+          id: attachment.id,
+          postId: result.comment.id,
+          url: attachment.url,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          status: "active",
+          removalReason: null,
+          removedByUsername: null,
+        }),
+      );
+
+      if (seededAttachments.length > 0 && !result.attachmentsFailed) {
+        setAttachmentsByPost((current) => ({
+          ...current,
+          [result.comment.id]: seededAttachments,
+        }));
+        setUploadStates((current) => {
+          const next = { ...current };
+
+          for (const attachment of seededAttachments) {
+            if (attachment.url) {
+              next[attachment.url] = "active";
+            }
+          }
+
+          return next;
+        });
+      }
+
+      if (result.attachmentsFailed) {
+        toast.warning("Comment posted, but the attachments couldn't be linked");
       }
 
       if (!nextCursor) {
@@ -362,6 +453,7 @@ export default function ThreadPageClient({
       setTotalComments((current) => current + 1);
       setDraft("");
       setReplyTarget(null);
+      setPendingAttachments([]);
       captchaRef.current?.reset();
       router.refresh();
     } catch {
@@ -541,7 +633,15 @@ export default function ThreadPageClient({
         </h1>
         {openingPost.body.trim() !== "" ? (
           <div className="mt-4">
-            <MarkdownContent>{openingPost.body}</MarkdownContent>
+            <MarkdownContent uploadStates={uploadStates}>
+              {openingPost.body}
+            </MarkdownContent>
+            <AttachmentGallery
+              attachments={attachmentsByPost[openingPost.id] ?? []}
+              isStaff={isStaff}
+              currentUserId={viewer?.id ?? null}
+              onStatusChange={setAttachmentStatus}
+            />
           </div>
         ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-3 text-[11px] font-semibold text-muted">
@@ -667,7 +767,15 @@ export default function ThreadPageClient({
                       ) : null}
 
                       <div className="mt-2">
-                        <MarkdownContent>{comment.body}</MarkdownContent>
+                        <MarkdownContent uploadStates={uploadStates}>
+                          {comment.body}
+                        </MarkdownContent>
+                        <AttachmentGallery
+                          attachments={attachmentsByPost[comment.id] ?? []}
+                          isStaff={isStaff}
+                          currentUserId={viewer?.id ?? null}
+                          onStatusChange={setAttachmentStatus}
+                        />
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -812,6 +920,14 @@ export default function ThreadPageClient({
                 onEditorReady={setComposer}
                 quoteClipboard
               />
+
+              <div className="mt-2">
+                <UploadAttachButton
+                  attachments={pendingAttachments}
+                  onChange={setPendingAttachments}
+                  disabled={submitting || !canPost}
+                />
+              </div>
 
               {isNewMember ? (
                 <div className="mt-2">

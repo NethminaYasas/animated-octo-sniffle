@@ -9,8 +9,10 @@ import {
   loadPostReactionSummaries,
   loadThreadCommentPage,
 } from "@/lib/forum/comments";
+import { loadAttachments } from "@/lib/media/attachments";
 import { decodeCommentCursor } from "@/lib/forum/cursor";
 import { sanitiseRichText } from "@/lib/forum/sanitize";
+import type { Attachment, UploadState } from "@/lib/attachments";
 import type { ThreadComment } from "@/lib/forum/types";
 import {
   excerptFromHtml,
@@ -38,6 +40,60 @@ const MAX_CONTENT_LENGTH = 20_000;
 const MAX_TITLE_LENGTH = 200;
 const MIN_TITLE_LENGTH = 3;
 const MAX_NOTIFICATION_RECIPIENTS = 20;
+const MAX_ATTACHMENTS = 8;
+const UPLOAD_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseUploadIds(
+  input: unknown,
+): { ok: true; ids: string[] } | { ok: false; error: string } {
+  if (input === null || input === undefined) {
+    return { ok: true, ids: [] };
+  }
+
+  if (!Array.isArray(input)) {
+    return { ok: false, error: "Invalid attachments." };
+  }
+
+  if (input.length > MAX_ATTACHMENTS) {
+    return {
+      ok: false,
+      error: `A post can have at most ${MAX_ATTACHMENTS} attachments.`,
+    };
+  }
+
+  const ids = [...new Set(input)];
+
+  for (const value of ids) {
+    if (typeof value !== "string" || !UPLOAD_ID_PATTERN.test(value)) {
+      return { ok: false, error: "Invalid attachments." };
+    }
+  }
+
+  return { ok: true, ids: ids as string[] };
+}
+
+async function linkUploads(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  postId: number,
+  ids: string[],
+): Promise<boolean> {
+  if (ids.length === 0) {
+    return true;
+  }
+
+  const { error } = await supabase.rpc("link_uploads_to_post", {
+    p_post_id: postId,
+    p_upload_ids: ids,
+  });
+
+  if (error) {
+    console.error("link_uploads_to_post failed:", error.message);
+    return false;
+  }
+
+  return true;
+}
 
 type NotificationKind = "reply" | "quote" | "mention";
 
@@ -66,7 +122,7 @@ type SupabaseServerClient = Awaited<
 >["supabase"];
 
 export type CreateThreadResult =
-  | { ok: true; threadId: number }
+  | { ok: true; threadId: number; attachmentsFailed?: boolean }
   | { ok: false; error: string };
 
 export type CreatedComment = {
@@ -81,7 +137,7 @@ export type CreatedComment = {
 };
 
 export type CreateCommentResult =
-  | { ok: true; comment: CreatedComment }
+  | { ok: true; comment: CreatedComment; attachmentsFailed?: boolean }
   | { ok: false; error: string };
 
 export type BasicActionResult =
@@ -297,6 +353,7 @@ export async function createThread(input: {
   title?: unknown;
   content?: unknown;
   captchaToken?: unknown;
+  uploadIds?: unknown;
 }): Promise<CreateThreadResult> {
   const { supabase, user } = await getServerSession();
 
@@ -343,6 +400,12 @@ export async function createThread(input: {
     return failure(captchaError);
   }
 
+  const uploadIds = parseUploadIds(input.uploadIds);
+
+  if (!uploadIds.ok) {
+    return failure(uploadIds.error);
+  }
+
   const { data, error } = await supabase.rpc("create_thread", {
     p_board_id: boardId,
     p_title: titleResult.title,
@@ -365,6 +428,20 @@ export async function createThread(input: {
     return failure("Could not create the thread. Try again.");
   }
 
+  const attachmentsOk = await linkUploads(
+    supabase,
+    created.post_id,
+    uploadIds.ids,
+  );
+
+  if (!attachmentsOk) {
+    await recordSecurityEvent({
+      event: "upload.attachment_failed",
+      userId: user.id,
+      metadata: { postId: created.post_id, kind: "thread" },
+    });
+  }
+
   await createNotifications({
     supabase,
     actor: user,
@@ -378,7 +455,11 @@ export async function createThread(input: {
   revalidatePath("/create");
   revalidatePath(`/t/${created.thread_id}`);
 
-  return { ok: true, threadId: created.thread_id };
+  return {
+    ok: true,
+    threadId: created.thread_id,
+    attachmentsFailed: !attachmentsOk,
+  };
 }
 
 export async function createComment(input: {
@@ -386,6 +467,7 @@ export async function createComment(input: {
   content?: unknown;
   replyToPostId?: unknown;
   captchaToken?: unknown;
+  uploadIds?: unknown;
 }): Promise<CreateCommentResult> {
   const threadId = Number(input.threadId);
 
@@ -490,6 +572,12 @@ export async function createComment(input: {
     return failure(captchaError);
   }
 
+  const uploadIds = parseUploadIds(input.uploadIds);
+
+  if (!uploadIds.ok) {
+    return failure(uploadIds.error);
+  }
+
   const { data: inserted, error } = await supabase
     .from("posts")
     .insert({
@@ -512,12 +600,23 @@ export async function createComment(input: {
     return failure("Could not post your comment. Try again.");
   }
 
+  const insertedPostId = inserted.id as number;
+  const attachmentsOk = await linkUploads(supabase, insertedPostId, uploadIds.ids);
+
+  if (!attachmentsOk) {
+    await recordSecurityEvent({
+      event: "upload.attachment_failed",
+      userId: user.id,
+      metadata: { postId: insertedPostId, kind: "comment" },
+    });
+  }
+
   await createNotifications({
     supabase,
     actor: user,
     threadId,
     threadTitle: thread.title,
-    postId: inserted.id,
+    postId: insertedPostId,
     content: contentResult.content,
     replyRecipientId: replyTarget ? replyTarget.authorId : null,
     fallbackThreadAuthorId: replyTarget ? null : thread.author_id,
@@ -529,7 +628,7 @@ export async function createComment(input: {
   return {
     ok: true,
     comment: {
-      id: inserted.id,
+      id: insertedPostId,
       authorId: user.id,
       author: user.username,
       authorInitial: user.username.slice(0, 1).toLowerCase() || "?",
@@ -538,6 +637,7 @@ export async function createComment(input: {
       replyToId: replyTarget?.id ?? null,
       replyToAuthor: replyTarget?.authorUsername ?? null,
     },
+    attachmentsFailed: !attachmentsOk,
   };
 }
 
@@ -675,6 +775,8 @@ export type LoadMoreCommentsResult =
         number,
         { counts: ReactionCounts; mine: ReactionKind | null }
       >;
+      attachments: Record<number, Attachment[]>;
+      uploadStates: Record<string, UploadState>;
       nextCursor: string | null;
     }
   | { ok: false; error: string };
@@ -705,16 +807,23 @@ export async function loadMoreComments(input: {
 
   try {
     const supabase = await createClient();
-    const page = await loadThreadCommentPage(supabase, threadId, cursor);
-    const reactions = await loadPostReactionSummaries(
-      supabase,
-      page.comments.map((comment) => comment.id),
+    const { user } = await getServerSession();
+    const isStaff = Boolean(
+      user && !user.isBanned && (user.role === "moderator" || user.role === "admin"),
     );
+    const page = await loadThreadCommentPage(supabase, threadId, cursor);
+    const commentIds = page.comments.map((comment) => comment.id);
+    const [reactions, attachmentLoad] = await Promise.all([
+      loadPostReactionSummaries(supabase, commentIds),
+      loadAttachments(supabase, commentIds, isStaff),
+    ]);
 
     return {
       ok: true,
       comments: page.comments,
       reactions,
+      attachments: Object.fromEntries(attachmentLoad.byPost),
+      uploadStates: attachmentLoad.uploadStates,
       nextCursor: page.nextCursor,
     };
   } catch {

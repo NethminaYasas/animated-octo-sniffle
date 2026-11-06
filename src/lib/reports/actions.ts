@@ -19,13 +19,14 @@ export async function createReport(input: {
   targetType?: unknown;
   postId?: unknown;
   targetUserId?: unknown;
+  uploadId?: unknown;
   reason?: unknown;
 }): Promise<CreateReportResult> {
   const targetType = input.targetType;
   const reason =
     typeof input.reason === "string" ? input.reason.trim() : "";
 
-  if (targetType !== "post" && targetType !== "user") {
+  if (targetType !== "post" && targetType !== "user" && targetType !== "upload") {
     return { ok: false, error: "Choose something to report." };
   }
 
@@ -49,6 +50,7 @@ export async function createReport(input: {
 
   let postId: number | null = null;
   let targetUserId: string | null = null;
+  let targetUploadId: string | null = null;
 
   if (targetType === "post") {
     postId = Number(input.postId);
@@ -56,7 +58,7 @@ export async function createReport(input: {
     if (!Number.isSafeInteger(postId) || postId <= 0) {
       return { ok: false, error: "That post is not available." };
     }
-  } else {
+  } else if (targetType === "user") {
     if (
       typeof input.targetUserId !== "string" ||
       !UUID_PATTERN.test(input.targetUserId)
@@ -65,6 +67,15 @@ export async function createReport(input: {
     }
 
     targetUserId = input.targetUserId;
+  } else {
+    if (
+      typeof input.uploadId !== "string" ||
+      !UUID_PATTERN.test(input.uploadId)
+    ) {
+      return { ok: false, error: "That attachment is not available." };
+    }
+
+    targetUploadId = input.uploadId;
   }
 
   const { error } = await supabase.from("reports").insert({
@@ -72,6 +83,7 @@ export async function createReport(input: {
     target_type: targetType,
     post_id: postId,
     target_user_id: targetUserId,
+    target_upload_id: targetUploadId,
     reason,
     status: "open",
   });

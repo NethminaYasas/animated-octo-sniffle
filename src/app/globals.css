@@ -346,3 +346,14 @@ body {
   height: auto;
   max-width: 100%;
 }
+
+/* Upload moderation: bare placeholder for removed attachments. The reason is
+ * only visible to staff. */
+.upload-removed {
+  display: inline-block;
+  border: 1px dashed var(--line);
+  border-radius: 0.5rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}

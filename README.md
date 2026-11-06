@@ -5,11 +5,12 @@ kaluwo is a Sri Lankan discussion forum in the style of
 community that speaks Sinhala, Tamil and English.
 
 This repository now has a real database-backed forum for threads, comments,
-reactions, cross-device notifications and moderation, on top of the existing
-Google/invite authentication flow and Cloudflare Turnstile. The schema and its
-Row Level Security policies live in `supabase/migrations/` and must be applied
-to your Supabase project (see [supabase/README.md](./supabase/README.md)).
-Uploads, modmail and end-to-end encrypted DMs are the next phases.
+reactions, cross-device notifications, moderation and forum uploads, on top of
+the existing Google/invite authentication flow and Cloudflare Turnstile. The
+schema and its Row Level Security policies live in `supabase/migrations/` and
+must be applied to your Supabase project (see
+[supabase/README.md](./supabase/README.md)). Modmail and end-to-end encrypted
+DMs are the next phases.
 
 ## Tech stack
 
@@ -216,7 +217,9 @@ the editor's Text size control applies to the text you select or type next.
 | `npm run build` | Create a production build |
 | `npm run start` | Run the production build |
 | `npm run lint` | Run ESLint |
-| `npm run test:rls` | Run the Phase 1 + Phase 2 PostgREST/RLS suites against a local Supabase stack |
+| `npm run test:rls` | Run the Phase 1 + Phase 2 + Phase 3 PostgREST/RLS suites against a local Supabase stack |
+| `npm run test:http` | Run the upload-route integration suite against a fake catbox |
+| `npm run uploads:cleanup` | Expire uploads never attached to a post |
 
 ## Project structure
 
@@ -227,7 +230,7 @@ src/
     create/           Database-backed thread composer
     forgot-password/  Reset request page and server action
     login/            Google + username login page and server action
-    moderation/       Staff report queue, mod log, member actions and invites
+    moderation/       Staff report queue, mod log, member actions, invites and uploads
     onboarding/       Google account username/password setup
     profile/          Public profiles, activity, warnings and ban history
     reset-password/   New-password page after the email link
@@ -245,6 +248,8 @@ src/
     boards.ts         Board names, descriptions and icons
     bookmarks.ts      Browser-local saved-post bookmarks
     forum/            Server actions, cursor helpers, comment pages and sanitizer
+    media/            Upload provider, pipeline and attachment loader
+    media-hosts.ts    Allowed media hostnames (shared by sanitiser and CSP)
     mentions.ts       @mention and quote parsing plus HTML helpers
     moderation/       Staff moderation server actions
     notifications.ts  Supabase-backed notification hook with Realtime + polling
@@ -268,6 +273,8 @@ supabase/
 tests/
   phase1-rls.mjs      PostgREST/RLS/Realtime suite for Phase 1
   phase2-rls.mjs      PostgREST/RLS/moderation/RPC suite for Phase 2
+  phase3-rls.mjs      PostgREST/RLS/upload-schema suite for Phase 3
+  phase3-http.mjs     Upload-route integration suite with a fake catbox
 ```
 
 ## Phase 1: database-backed forum
@@ -436,17 +443,19 @@ None. Phase 2 uses the existing Supabase, service-role and Turnstile variables.
     thread loads forward to that comment and scrolls to it.
 13. Create a thread with 205+ comments. Confirm “Load more comments” reaches
     the last page and reaction totals are correct per page.
-14. Run `npm run test:rls`.
+14. Run `npm run test:rls` (Phase 3 adds `npm run test:http`).
 
 ### Automated tests
 
-`npm run test:rls` now runs both the Phase 1 and Phase 2 PostgREST/supabase-js
+`npm run test:rls` runs the Phase 1, Phase 2 and Phase 3 PostgREST/supabase-js
 suites. The Phase 2 suite covers direct privilege escalation, hierarchy,
 last-admin concurrency, demotion immediacy, ban expiry, warnings, reports,
 invite hashing/revocation, append-only mod-log enforcement, pinned cursor
 behaviour, deleted-content visibility, comment pagination beyond 200 comments
 and per-page reaction summaries. The Phase 1 plain-Postgres suite remains
-available for the baseline schema.
+available for the baseline schema. Phase 3 adds the upload schema/RPC suite
+plus `npm run test:http` for the route itself (see
+[Phase 3](#phase-3-uploads)).
 
 ### Known limitations
 
@@ -466,6 +475,165 @@ available for the baseline schema.
   own report status only.
 - Invite plaintext is shown once at creation. If it is lost, revoke the code or
   create a new batch; it cannot be recovered.
+
+## Phase 3: uploads
+
+Images, audio and short videos can be attached to threads and comments. Files
+are stored at **catbox.moe**; the browser never talks to catbox directly.
+
+### Migrations to run
+
+Apply after the Phase 2 migrations, in filename order:
+
+1. `20261107100000_upload_enums.sql` — new `mod_log`/report enum values for
+   uploads and hash blocks.
+2. `20261107110000_uploads.sql` — the `uploads`, `post_uploads` and
+   `upload_hash_blocks` tables, the safe `public_uploads`/`staff_uploads`
+   views, the upload quota RPC, linking, removal/restore, hash blocking,
+   unlinked-upload expiry and upload-report support. Also drops the unused,
+   empty `media_assets` table from the initial schema.
+3. `20261107120000_safe_moderation_views.sql` — replaces the Phase 2
+   `my_bans`/`my_warnings` views with `SECURITY DEFINER` functions so the
+   Supabase linter no longer flags them and members still cannot read the
+   issuing moderator.
+
+### Environment variables
+
+All server-only; add them to `.env.local` (see `.env.example`):
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `CATBOX_USERHASH` | No | Links uploads to a catbox account and enables provider deletion. Without it, staff removal hides a file in the forum but cannot delete it at catbox. |
+| `CATBOX_API_ENDPOINT` | No | Overrides the API URL. Only for pointing at a local fake in tests. |
+| `MEDIA_MAX_IMAGE_MB` | No | Default `10`. |
+| `MEDIA_MAX_AUDIO_MB` | No | Default `30`. |
+| `MEDIA_MAX_VIDEO_MB` | No | Default `50` (Cloudflare-proxied request bodies). |
+
+### What the provider stores, and what it does not
+
+Catbox files are **public by URL**, are served from `files.catbox.moe`, and
+have **no retention guarantee**. Their FAQ says anonymous uploads are removed
+after two years of no hits and account-linked uploads are permanent; their
+terms also allow deduplicating or removing files, and commercial use requires
+their prior approval. Treat every upload as public, permanent and outside our
+control:
+
+- never upload private content; DM attachments are out of scope,
+- the forum cannot guarantee a file stays available,
+- deletion at catbox needs `CATBOX_USERHASH` and is best effort.
+
+Images are re-encoded with `sharp` before upload, which applies EXIF
+orientation and **drops all metadata, including GPS**. Video and audio are
+passed through unchanged, so container metadata is not stripped. Files with
+data appended after the image container's end are rejected.
+
+The provider sits behind `src/lib/media/provider.ts`, so an R2 or Supabase
+Storage provider can be added without touching the route or UI.
+
+### Limits and abuse controls
+
+Per-file: images 10 MB, audio 30 MB, video 50 MB. File type is decided from
+**magic bytes**, never the extension or client MIME type. Thumbnails are not
+generated.
+
+| Role | Per 15 minutes | Per day | Daily bytes |
+| --- | --- | --- | --- |
+| `new_member` | 3 | 20 | 25 MB |
+| `member` / `senior_member` | 10 | 200 | 1 GB |
+| `moderator` / `admin` | 50 | 1000 | 10 GB |
+
+Counters are atomic database rows (`kaluwo_private.upload_quotas` plus the
+existing rate-limit buckets). The route also caps in-flight uploads per user
+and per process, and logs `upload.*` events through `recordSecurityEvent`.
+
+> **Proxy body limit:** Next's proxy buffers request bodies (10 MB by
+> default) before the route sees them, so `next.config.ts` sets
+> `experimental.proxyClientMaxBodySize: "52mb"`. Keep it above
+> `MEDIA_MAX_VIDEO_MB`.
+
+### Upload cleanup
+
+Uploads that are never attached to a post are expired after 24 hours by
+`expire_unlinked_uploads()`, which marks them removed and writes a
+`system` mod-log row. Schedule it (for example daily):
+
+```bash
+npm run uploads:cleanup
+```
+
+The script also attempts a provider delete when `CATBOX_USERHASH` is set.
+
+### Moderation
+
+- Staff remove an attachment from the thread or `/moderation/uploads`. Removal
+  is an audited RPC (`upload.remove`): the file is hidden everywhere, members
+  see a bare “removed by a moderator” placeholder, staff see the reason and who
+  removed it. Removal never rolls back if the provider delete fails.
+- `/moderation/uploads` also lists blocked hashes. Staff block a SHA-256;
+  **only admins unblock**. Both are mod-logged.
+- Members can report an attachment; it uses the existing report queue with an
+  `upload` target type.
+
+### Content-Security-Policy
+
+`next.config.ts` sends **`Content-Security-Policy-Report-Only`** (not enforcing
+yet) with `img-src`/`media-src` limited to `'self' data:` and
+`https://files.catbox.moe`. Violations are posted to `/api/csp-reports` and
+logged. Origins came from an audit of the app: Turnstile
+(`challenges.cloudflare.com`), Supabase (connect), and the whitelisted embed
+providers; fonts are self-hosted via `next/font`. Once the report data is
+clean, switch the header name to `Content-Security-Policy` to enforce it.
+
+### Manual test checklist
+
+1. Apply the three Phase 3 migrations and regenerate
+   `src/lib/supabase/types.ts`.
+2. As a member, attach an image to a thread and to a comment. Confirm both
+   render, are lazy-loaded, and appear after reload.
+3. Upload a photo containing GPS EXIF and confirm the stored file has no GPS
+   data (download it and inspect).
+4. Rename a PDF to `.png` and confirm it is rejected (magic bytes).
+5. Upload a file just over the image cap and confirm the 413 arrives without
+   the whole file being stored.
+6. Spam uploads as a `new_member` and confirm the 15-minute and daily limits.
+7. Try to attach another member’s upload id to your post; confirm it is
+   rejected.
+8. Remove an attachment as a moderator: members see the placeholder, staff see
+   the reason, and the mod log has one `upload.remove` row.
+9. Block the SHA-256 of a file, try to upload it again, confirm the rejection;
+   unblock as an admin and confirm it uploads.
+10. Report an attachment and handle it in `/moderation/reports`.
+11. Confirm `Content-Security-Policy-Report-Only` is present and that images
+    from other hosts are blocked when the policy is enforced.
+12. Run `npm run test:rls` and `npm run test:http`.
+
+### Automated tests
+
+- `npm run test:rls` runs Phase 1, Phase 2 and Phase 3
+  (`tests/phase3-rls.mjs`). Phase 3 covers base-table grants, the safe views,
+  quota tiers (including `senior_member`), linking ownership, the backstop
+  trigger, hash block/unblock, removal/restore, upload reports, anonymous
+  rejection and the unlinked-upload expiry.
+- `npm run test:http` (`tests/phase3-http.mjs`) builds the app with the local
+  Supabase env, starts a **fake catbox** and the Next server, and checks auth,
+  origin handling, magic bytes, streaming size cut-off, EXIF stripping, quota,
+  blocklist, removal and the CSP header. It never calls the real catbox.
+
+### Known limitations
+
+- Catbox is a free third-party host with no SLA or retention guarantee, and
+  commercial use needs their approval. Files are public by URL.
+- Provider deletion requires `CATBOX_USERHASH`; without it, “remove” is
+  hide-only in the forum. Deduplicated files may survive deletion.
+- Video/audio metadata is not stripped (no ffmpeg); only images are
+  re-encoded.
+- MP4/WebM container structure checks are best-effort; images get strict
+  appended-data checks.
+- The in-flight upload cap is per process; the database quota is the real
+  ceiling across instances.
+- Uploads are for forum posts only. DM attachments are deliberately out of
+  scope.
+- The CSP is report-only until its violation reports look clean.
 
 ## Troubleshooting auth setup
 

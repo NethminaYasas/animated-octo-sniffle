@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 
+import { recordSecurityEvent } from "@/lib/audit/security-events";
 import { getServerSession } from "@/lib/auth/server-user";
+import { getUploadProvider } from "@/lib/media/provider";
 import { moderationErrorMessage } from "@/lib/supabase-errors";
 
 export type ModerationResult =
@@ -69,7 +71,9 @@ async function rpcResult(
     | "moderate_ban_user"
     | "moderate_unban_user"
     | "admin_set_role"
-    | "admin_revoke_invite_code",
+    | "admin_revoke_invite_code"
+    | "moderate_block_upload_hash"
+    | "moderate_unblock_upload_hash",
   args: Record<string, unknown>,
 ): Promise<ModerationResult> {
   const { supabase } = await getServerSession();
@@ -512,6 +516,144 @@ export async function revokeInviteCode(input: {
 
   if (result.ok) {
     revalidatePath("/moderation/invites");
+    revalidatePath("/moderation/log");
+  }
+
+  return result;
+}
+
+export async function setUploadRemoved(input: {
+  uploadId?: unknown;
+  removed?: unknown;
+  reason?: unknown;
+}): Promise<ModerationResult> {
+  if (typeof input.uploadId !== "string" || !UUID_PATTERN.test(input.uploadId)) {
+    return { ok: false, error: "Upload not found." };
+  }
+
+  const reason = reasonProblem(input.reason);
+
+  if (reason) {
+    return { ok: false, error: reason };
+  }
+
+  const remove = input.removed !== false;
+  const { supabase } = await getServerSession();
+
+  if (!remove) {
+    const { data, error } = await supabase.rpc("moderate_restore_upload", {
+      p_upload_id: input.uploadId,
+      p_reason: String(input.reason).trim(),
+    });
+
+    if (error) {
+      return { ok: false, error: moderationErrorMessage(error) };
+    }
+
+    const row = (Array.isArray(data) ? data[0] : null) as
+      | { changed?: boolean; mod_log_id?: number | null }
+      | null;
+
+    revalidatePath("/moderation/uploads");
+    revalidatePath("/moderation/log");
+
+    return {
+      ok: true,
+      changed: Boolean(row?.changed),
+      modLogId: row?.mod_log_id ?? null,
+    };
+  }
+
+  const { data, error } = await supabase.rpc("moderate_remove_upload", {
+    p_upload_id: input.uploadId,
+    p_reason: String(input.reason).trim(),
+  });
+
+  if (error) {
+    return { ok: false, error: moderationErrorMessage(error) };
+  }
+
+  const row = (Array.isArray(data) ? data[0] : null) as
+    | {
+        changed?: boolean;
+        mod_log_id?: number | null;
+        provider_file_id?: string | null;
+      }
+    | null;
+
+  // Best effort: hide is already enforced by the database status. Deleting at
+  // the provider is impossible without a CATBOX_USERHASH and can fail for
+  // deduplicated files; never block or roll back the action on that account.
+  if (row?.changed && row.provider_file_id) {
+    try {
+      const provider = getUploadProvider();
+      await provider.delete(row.provider_file_id);
+    } catch {
+      await recordSecurityEvent({
+        event: "upload.provider_delete_failed",
+        metadata: { providerFileId: row.provider_file_id },
+      });
+    }
+  }
+
+  revalidatePath("/moderation/uploads");
+  revalidatePath("/moderation/log");
+
+  return {
+    ok: true,
+    changed: Boolean(row?.changed),
+    modLogId: row?.mod_log_id ?? null,
+  };
+}
+
+export async function blockUploadHash(input: {
+  sha256?: unknown;
+  reason?: unknown;
+}): Promise<ModerationResult> {
+  if (typeof input.sha256 !== "string" || !HASH_PATTERN.test(input.sha256)) {
+    return { ok: false, error: "Enter a SHA-256 hash." };
+  }
+
+  const reason = reasonProblem(input.reason);
+
+  if (reason) {
+    return { ok: false, error: reason };
+  }
+
+  const result = await rpcResult("moderate_block_upload_hash", {
+    p_sha256: input.sha256,
+    p_reason: String(input.reason).trim(),
+  });
+
+  if (result.ok) {
+    revalidatePath("/moderation/uploads");
+    revalidatePath("/moderation/log");
+  }
+
+  return result;
+}
+
+export async function unblockUploadHash(input: {
+  sha256?: unknown;
+  reason?: unknown;
+}): Promise<ModerationResult> {
+  if (typeof input.sha256 !== "string" || !HASH_PATTERN.test(input.sha256)) {
+    return { ok: false, error: "Enter a SHA-256 hash." };
+  }
+
+  const reason = reasonProblem(input.reason);
+
+  if (reason) {
+    return { ok: false, error: reason };
+  }
+
+  const result = await rpcResult("moderate_unblock_upload_hash", {
+    p_sha256: input.sha256,
+    p_reason: String(input.reason).trim(),
+  });
+
+  if (result.ok) {
+    revalidatePath("/moderation/uploads");
     revalidatePath("/moderation/log");
   }
 

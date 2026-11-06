@@ -107,64 +107,6 @@ export type Database = {
           },
         ];
       };
-      media_assets: {
-        Row: {
-          created_at: string;
-          file_key: string;
-          id: number;
-          kind: Database["public"]["Enums"]["media_kind"];
-          mime_type: string;
-          owner_id: string | null;
-          post_id: number | null;
-          provider: string;
-          size_bytes: number;
-          status: Database["public"]["Enums"]["media_status"];
-          url: string;
-        };
-        ComputedFields: never;
-        Insert: {
-          created_at?: string;
-          file_key: string;
-          id?: never;
-          kind: Database["public"]["Enums"]["media_kind"];
-          mime_type: string;
-          owner_id?: string | null;
-          post_id?: number | null;
-          provider?: string;
-          size_bytes: number;
-          status?: Database["public"]["Enums"]["media_status"];
-          url: string;
-        };
-        Update: {
-          created_at?: string;
-          file_key?: string;
-          id?: never;
-          kind?: Database["public"]["Enums"]["media_kind"];
-          mime_type?: string;
-          owner_id?: string | null;
-          post_id?: number | null;
-          provider?: string;
-          size_bytes?: number;
-          status?: Database["public"]["Enums"]["media_status"];
-          url?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "media_assets_owner_id_fkey";
-            columns: ["owner_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "media_assets_post_id_fkey";
-            columns: ["post_id"];
-            isOneToOne: false;
-            referencedRelation: "posts";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       member_bans: {
         Row: {
           banned_by: string | null;
@@ -390,6 +332,47 @@ export type Database = {
           },
         ];
       };
+      post_uploads: {
+        Row: {
+          created_at: string;
+          post_id: number;
+          upload_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          post_id: number;
+          upload_id: string;
+        };
+        Update: {
+          created_at?: string;
+          post_id?: number;
+          upload_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "post_uploads_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_uploads_upload_id_fkey";
+            columns: ["upload_id"];
+            isOneToOne: false;
+            referencedRelation: "public_uploads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_uploads_upload_id_fkey";
+            columns: ["upload_id"];
+            isOneToOne: false;
+            referencedRelation: "uploads";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       posts: {
         Row: {
           author_id: string | null;
@@ -598,6 +581,7 @@ export type Database = {
           reporter_id: string | null;
           status: Database["public"]["Enums"]["report_status"];
           target_type: Database["public"]["Enums"]["report_target_type"];
+          target_upload_id: string | null;
           target_user_id: string | null;
         };
         ComputedFields: never;
@@ -609,6 +593,7 @@ export type Database = {
           reporter_id?: string | null;
           status?: Database["public"]["Enums"]["report_status"];
           target_type?: Database["public"]["Enums"]["report_target_type"];
+          target_upload_id?: string | null;
           target_user_id?: string | null;
         };
         Update: {
@@ -619,6 +604,7 @@ export type Database = {
           reporter_id?: string | null;
           status?: Database["public"]["Enums"]["report_status"];
           target_type?: Database["public"]["Enums"]["report_target_type"];
+          target_upload_id?: string | null;
           target_user_id?: string | null;
         };
         Relationships: [
@@ -634,6 +620,20 @@ export type Database = {
             columns: ["reporter_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reports_target_upload_id_fkey";
+            columns: ["target_upload_id"];
+            isOneToOne: false;
+            referencedRelation: "public_uploads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reports_target_upload_id_fkey";
+            columns: ["target_upload_id"];
+            isOneToOne: false;
+            referencedRelation: "uploads";
             referencedColumns: ["id"];
           },
           {
@@ -747,79 +747,129 @@ export type Database = {
           },
         ];
       };
-    };
-    Views: {
-      my_bans: {
+      upload_hash_blocks: {
         Row: {
+          blocked_by: string | null;
           created_at: string;
-          expires_at: string | null;
-          id: number;
-          lift_reason: string | null;
-          lifted_at: string | null;
           reason: string;
-          user_id: string;
+          sha256: string;
         };
         ComputedFields: never;
         Insert: {
-          created_at?: string | null;
-          expires_at?: string | null;
-          id?: number | null;
-          lift_reason?: string | null;
-          lifted_at?: string | null;
-          reason?: string | null;
-          user_id?: string | null;
+          blocked_by?: string | null;
+          created_at?: string;
+          reason: string;
+          sha256: string;
         };
         Update: {
-          created_at?: string | null;
-          expires_at?: string | null;
-          id?: number | null;
-          lift_reason?: string | null;
-          lifted_at?: string | null;
-          reason?: string | null;
-          user_id?: string | null;
+          blocked_by?: string | null;
+          created_at?: string;
+          reason?: string;
+          sha256?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "member_bans_user_id_fkey";
-            columns: ["user_id"];
+            foreignKeyName: "upload_hash_blocks_blocked_by_fkey";
+            columns: ["blocked_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
       };
-      my_warnings: {
+      uploads: {
         Row: {
-          acknowledged_at: string | null;
           created_at: string;
-          id: number;
-          reason: string;
-          user_id: string;
+          id: string;
+          mime_type: string;
+          provider: string;
+          provider_file_id: string | null;
+          raw_sha256: string;
+          removal_reason: string | null;
+          removed_at: string | null;
+          removed_by: string | null;
+          sha256: string;
+          size_bytes: number;
+          status: string;
+          uploader_id: string;
+          url: string;
         };
         ComputedFields: never;
         Insert: {
-          acknowledged_at?: string | null;
-          created_at?: string | null;
-          id?: number | null;
-          reason?: string | null;
-          user_id?: string | null;
+          created_at?: string;
+          id?: string;
+          mime_type: string;
+          provider?: string;
+          provider_file_id?: string | null;
+          raw_sha256: string;
+          removal_reason?: string | null;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          sha256: string;
+          size_bytes: number;
+          status?: string;
+          uploader_id: string;
+          url: string;
         };
         Update: {
-          acknowledged_at?: string | null;
-          created_at?: string | null;
-          id?: number | null;
-          reason?: string | null;
-          user_id?: string | null;
+          created_at?: string;
+          id?: string;
+          mime_type?: string;
+          provider?: string;
+          provider_file_id?: string | null;
+          raw_sha256?: string;
+          removal_reason?: string | null;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          sha256?: string;
+          size_bytes?: number;
+          status?: string;
+          uploader_id?: string;
+          url?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "member_warnings_user_id_fkey";
-            columns: ["user_id"];
+            foreignKeyName: "uploads_removed_by_fkey";
+            columns: ["removed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "uploads_uploader_id_fkey";
+            columns: ["uploader_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
+      };
+    };
+    Views: {
+      public_uploads: {
+        Row: {
+          id: string;
+          mime_type: string;
+          size_bytes: number;
+          status: string;
+          url: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          id?: string | null;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          status?: string | null;
+          url?: never;
+        };
+        Update: {
+          id?: string | null;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          status?: string | null;
+          url?: never;
+        };
+        Relationships: [];
       };
     };
     Functions: {
@@ -866,6 +916,7 @@ export type Database = {
         }[];
       };
       consume_invite_code: { Args: { p_code: string }; Returns: boolean };
+      consume_upload_quota: { Args: { p_bytes: number; p_user_id: string }; Returns: undefined };
       create_thread: {
         Args: { p_board_id: string; p_content: string; p_title: string };
         Returns: {
@@ -873,9 +924,22 @@ export type Database = {
           thread_id: number;
         }[];
       };
+      expire_unlinked_uploads: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: string;
+          provider_file_id: string;
+        }[];
+      };
       is_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_banned: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_moderator: { Args: Record<PropertyKey, never>; Returns: boolean };
+      link_uploads_to_post: {
+        Args: { p_post_id: number; p_upload_ids: string[] };
+        Returns: {
+          linked: number;
+        }[];
+      };
       list_thread_comments: {
         Args: { p_after_at?: string; p_after_id?: number; p_limit?: number; p_thread_id: number };
         Returns: {
@@ -921,8 +985,31 @@ export type Database = {
           mod_log_id: number;
         }[];
       };
+      moderate_block_upload_hash: {
+        Args: { p_reason: string; p_sha256: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
       moderate_move_thread: {
         Args: { p_board_id: string; p_reason: string; p_thread_id: number };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      moderate_remove_upload: {
+        Args: { p_reason: string; p_upload_id: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+          provider: string;
+          provider_file_id: string;
+        }[];
+      };
+      moderate_restore_upload: {
+        Args: { p_reason: string; p_upload_id: string };
         Returns: {
           changed: boolean;
           mod_log_id: number;
@@ -963,12 +1050,41 @@ export type Database = {
           mod_log_id: number;
         }[];
       };
+      moderate_unblock_upload_hash: {
+        Args: { p_reason: string; p_sha256: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
       moderate_warn_user: {
         Args: { p_reason: string; p_target_id: string };
         Returns: {
           changed: boolean;
           mod_log_id: number;
           warning_id: number;
+        }[];
+      };
+      my_bans: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          created_at: string;
+          expires_at: string;
+          id: number;
+          lift_reason: string;
+          lifted_at: string;
+          reason: string;
+          user_id: string;
+        }[];
+      };
+      my_warnings: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          acknowledged_at: string;
+          created_at: string;
+          id: number;
+          reason: string;
+          user_id: string;
         }[];
       };
       post_reaction_summary: {
@@ -992,6 +1108,27 @@ export type Database = {
         Returns: {
           changed: boolean;
           mod_log_id: number;
+        }[];
+      };
+      staff_uploads: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          created_at: string;
+          id: string;
+          mime_type: string;
+          provider: string;
+          provider_file_id: string;
+          raw_sha256: string;
+          removal_reason: string;
+          removed_at: string;
+          removed_by: string;
+          removed_by_username: string;
+          sha256: string;
+          size_bytes: number;
+          status: string;
+          uploader_id: string;
+          uploader_username: string;
+          url: string;
         }[];
       };
       thread_reaction_summary: {
@@ -1024,12 +1161,16 @@ export type Database = {
         | "report.resolve"
         | "report.dismiss"
         | "invite.create"
-        | "invite.revoke";
-      mod_target_type: "post" | "thread" | "user" | "report" | "invite";
+        | "invite.revoke"
+        | "upload.remove"
+        | "upload.restore"
+        | "upload.block_hash"
+        | "upload.unblock_hash";
+      mod_target_type: "post" | "thread" | "user" | "report" | "invite" | "upload" | "upload_hash";
       notification_kind: "reply" | "quote" | "mention";
       reaction_kind: "like" | "laugh" | "wow" | "anger" | "dislike";
       report_status: "open" | "resolved" | "dismissed";
-      report_target_type: "post" | "user";
+      report_target_type: "post" | "user" | "upload";
       user_role: "new_member" | "member" | "senior_member" | "moderator" | "admin";
     };
     CompositeTypes: {
@@ -1169,12 +1310,16 @@ export const Constants = {
         "report.dismiss",
         "invite.create",
         "invite.revoke",
+        "upload.remove",
+        "upload.restore",
+        "upload.block_hash",
+        "upload.unblock_hash",
       ],
-      mod_target_type: ["post", "thread", "user", "report", "invite"],
+      mod_target_type: ["post", "thread", "user", "report", "invite", "upload", "upload_hash"],
       notification_kind: ["reply", "quote", "mention"],
       reaction_kind: ["like", "laugh", "wow", "anger", "dislike"],
       report_status: ["open", "resolved", "dismissed"],
-      report_target_type: ["post", "user"],
+      report_target_type: ["post", "user", "upload"],
       user_role: ["new_member", "member", "senior_member", "moderator", "admin"],
     },
   },

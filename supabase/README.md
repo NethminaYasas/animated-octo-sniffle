@@ -51,8 +51,18 @@ Run every file in `migrations/` in filename order:
     delete/restore/lock/pin/move RPCs.
 20. `20261106140000_user_moderation_rpcs.sql` — audited ban/unban/warn and
     admin role-change RPCs with the admin advisory lock.
-21. `20261106150000_invite_admin.sql` — hashed invite codes, revocation,
+21. `20261106150000_invite_admin.sql` - hashed invite codes, revocation,
     one-time plaintext display and admin invite RPCs.
+22. `20261107100000_upload_enums.sql` - enum values for upload moderation,
+    upload reports and hash blocks.
+23. `20261107110000_uploads.sql` - `uploads`, `post_uploads`,
+    `upload_hash_blocks`, the safe `public_uploads`/`staff_uploads` views, the
+    upload quota RPC, linking, removal/restore, hash blocking, unlinked-upload
+    expiry and upload-report support. Also drops the unused, empty
+    `media_assets` table.
+24. `20261107120000_safe_moderation_views.sql` - replaces the `my_bans` and
+    `my_warnings` views with `SECURITY DEFINER` functions so the Supabase
+    linter stops flagging security-definer views.
 
 Migration 11 needs the `pg_cron` extension. Supabase normally allows the
 migration to create it; if not, enable **pg_cron** under
@@ -67,9 +77,10 @@ accounts manually with `select public.promote_member_roles();`.
    order.
 4. Open **Table Editor** and confirm these tables exist:
    `profiles`, `boards`, `threads`, `posts`, `reactions`, `reports`,
-   `media_assets`, `security_events`, `notifications`, `mod_log`,
+   `uploads`, `post_uploads`, `security_events`, `notifications`, `mod_log`,
    `member_bans`, `member_warnings`, `report_resolutions`.
-5. Confirm the views `my_bans` and `my_warnings` exist.
+5. Confirm the functions `my_bans()` and `my_warnings()` exist (they replaced
+   the old views).
 6. Open `boards`. It should contain 7 rows (Announcements, General, ...).
 7. Open `profiles`. It should have `reaction_score`, `onboarding_completed` and
    `banned_until` columns.
@@ -239,7 +250,7 @@ redirecting. Keep the Site URL set to your real origin.
 | `posts` | Opening posts and replies; `is_opening` marks the first post |
 | `reactions` | One changeable reaction per member per post or comment |
 | `reports` | Report queue with `open` / `resolved` / `dismissed` |
-| `media_assets` | catbox upload metadata and removal status |
+| `uploads` | Upload metadata, hashes, status and removal state (safe columns only for members) |
 | `notifications` | Per-member reply/quote/mention notifications with read state |
 | `mod_log` | Append-only moderation audit log; staff-readable, no direct API writes |
 | `member_bans` | Private ban history and issuing moderator; staff-only base table |
@@ -248,8 +259,11 @@ redirecting. Keep the Site URL set to your real origin.
 | `invite_codes` | Hashed single-use sign-up codes with revocation and one-time plaintext display |
 | `security_events` | Auth and moderation audit trail with IP; service-role only |
 
-The `my_bans` and `my_warnings` views expose a member’s own reason/expiry and
-acknowledgement state without the issuing moderator identity.
+The `my_bans()` and `my_warnings()` functions expose a member's own
+reason/expiry and acknowledgement state without the issuing moderator identity.
+They are `SECURITY DEFINER` with a pinned `search_path`, `EXECUTE` is revoked
+from `public`/`anon`, and they filter on `auth.uid()`. Staff keep reading the
+base tables, so they still see the moderator.
 
 `kaluwo_private` is an internal schema. It is **not** exposed by PostgREST and
 holds the RLS helpers, reply-count trigger and rate-limit buckets.
@@ -370,8 +384,8 @@ never uses `OFFSET`. Threads with no active opening post are excluded.
   re-check the caller’s live admin/staff role after acquiring it. Concurrent
   demotions cannot leave zero admins.
 - `member_bans` stores the private reason and issuing moderator. Members read
-  their own safe rows through `my_bans`; staff read the base table.
-- Warnings use `member_warnings`, the `my_warnings` safe view and
+  their own safe rows through `my_bans()`; staff read the base table.
+- Warnings use `member_warnings`, the `my_warnings()` function and
   `acknowledge_warning()`. Warnings do not create bell notifications.
 
 ### Moderation log
@@ -435,6 +449,42 @@ never uses `OFFSET`. Threads with no active opening post are excluded.
   changes cannot corrupt the main feed cursor.
 - Indexes cover `(is_pinned, last_post_at, id)` and the board variants.
 
+### Uploads
+
+Files live at catbox.moe and are **public by URL with no retention
+guarantee**. Catbox strips nothing, so the app re-encodes images before upload
+to drop EXIF/GPS. There is no provider SLA and commercial use needs their
+approval.
+
+- `uploads` records the uploader, provider, provider file id, URL, MIME type,
+  size, `raw_sha256` (as received) and `sha256` (after stripping), status and
+  removal metadata. RLS is enabled with **no member policies**: members and
+  anonymous visitors read `public_uploads` (id, url, mime_type, size_bytes,
+  status), staff read `staff_uploads` (full row). Neither view is writable;
+  there are no client INSERT/UPDATE/DELETE grants.
+- `post_uploads` links a post to its uploads. `link_uploads_to_post()` requires
+  `auth.uid() = post author` and at most 8 active uploads owned by that author;
+  `enforce_post_upload_owner()` re-checks it on every insert, so even the
+  service role cannot create a cross-owner link.
+- `upload_hash_blocks` is the SHA-256 blocklist. Staff block
+  (`moderate_block_upload_hash`), admins unblock
+  (`moderate_unblock_upload_hash`), and both write a mod-log row.
+- `public.consume_upload_quota(user, bytes)` is `SECURITY DEFINER`, EXECUTE
+  granted to `service_role` only. It enforces the per-15-minute count and the
+  daily count/byte quota by role: `new_member` 3/20/25 MB; `member` and
+  `senior_member` 10/200/1 GB; staff 50/1000/10 GB.
+- `moderate_remove_upload` / `moderate_restore_upload` are audited staff RPCs
+  with a required reason and the same moderator/admin hierarchy as content.
+  Removal sets `status = 'removed'`; rendering shows a bare placeholder to
+  members and the reason to staff.
+- `expire_unlinked_uploads()` is service-role only and marks active uploads
+  older than 24 hours with no `post_uploads` row as removed, writing a
+  `system` mod-log row. Schedule it with `npm run uploads:cleanup`.
+- Reports accept a third target (`target_type = 'upload'`) with the same
+  one-open-report-per-reporter rule and the same resolution hierarchy.
+- The Phase 3 migration drops the unused, empty `media_assets` table from the
+  initial schema; `uploads` is the single media pipeline.
+
 ### Why staff writes are RPC-only
 
 Staff actions need an atomic mod-log row plus live role/hierarchy/last-admin
@@ -474,11 +524,12 @@ a small JSONB metadata object. The app calls `recordSecurityEvent()` from
 ## What the RLS policies allow
 
 - **Public reads:** profiles, boards, non-deleted threads, non-deleted posts,
-  reactions, and active media. Anonymous visitors can browse the forum. Staff
-  see soft-deleted threads/posts; members do not.
+  reactions, and uploads attached to a visible post (safe columns only).
+  Anonymous visitors can browse the forum. Staff see soft-deleted
+  threads/posts; members do not.
 - **Authenticated writes:** a member can start a thread, add a post or reply,
-  react, report content/members, or add media. The row must belong to them.
-  Staff moderation writes are RPC-only.
+  react, report content/members, and attach their own uploads. The row must
+  belong to them. Staff moderation writes are RPC-only.
 - **Banned members:** can still read and react. Posting, commenting,
   uploading, reporting and other writes check the effective `is_banned()`
   state and reject them; the reaction policies intentionally do not.
@@ -495,13 +546,16 @@ a small JSONB metadata object. The app calls `recordSecurityEvent()` from
   their own reaction, and moderators can remove reactions.
 - **Reports:** reporters can read only their own report rows; staff read the
   queue. Status changes and `report_resolutions` are staff-only RPC writes.
-- **Media:** active assets are public; owners and moderators can mark them
-  removed. Only moderators can delete the row.
+- **Uploads:** members and anonymous visitors read only `id`, `url`,
+  `mime_type`, `size_bytes` and `status` for uploads attached to a visible post;
+  removed URLs are hidden from members. Staff read the full row through
+  `staff_uploads()`. Nobody can INSERT/UPDATE/DELETE through the API; removal is
+  an audited RPC.
 - **Profiles:** users can edit their own username and avatar only. Role and
   ban changes are admin/moderator RPCs; direct privileged updates are denied.
-- **Member moderation records:** members read their own safe `my_bans` /
-  `my_warnings` views without the issuing moderator. Staff read the base
-  tables. `mod_log`, `member_bans`, `member_warnings` and
+- **Member moderation records:** members read their own safe rows via
+  `my_bans()` / `my_warnings()` without the issuing moderator. Staff read the
+  base tables. `mod_log`, `member_bans`, `member_warnings` and
   `report_resolutions` have no direct API INSERT/UPDATE/DELETE grants.
 - **Notifications:** a member can read, mark read and delete only their own
   rows. There is no INSERT policy; the service role creates notifications.
@@ -518,10 +572,12 @@ a small JSONB metadata object. The app calls `recordSecurityEvent()` from
 
 ## Phase 1 tests
 
-The repository has two PostgREST suites plus a plain-PostgreSQL suite:
+The repository has three PostgREST suites (`npm run test:rls`) plus a separate
+plain-PostgreSQL suite:
 
-1. **PostgREST / Supabase Phase 1** (`tests/phase1-rls.mjs`) and **Phase 2**
-   (`tests/phase2-rls.mjs`). Start the local stack, apply the migrations, then
+1. **PostgREST / Supabase Phase 1** (`tests/phase1-rls.mjs`), **Phase 2**
+   (`tests/phase2-rls.mjs`) and **Phase 3** (`tests/phase3-rls.mjs`). Start the
+   local stack, apply the migrations, then
    run:
    ```bash
    npx supabase start
@@ -531,16 +587,26 @@ The repository has two PostgREST suites plus a plain-PostgreSQL suite:
    export SUPABASE_SERVICE_ROLE_KEY=<local service role key>
    npm run test:rls
    ```
-   `npm run test:rls` runs both suites. They create throwaway users and cover
-   direct privilege escalation, notification RLS, Realtime INSERT/DELETE,
-   rate-limit hints, cursor pagination, LIKE escaping, staff hierarchy,
-   last-admin concurrency, demotion immediacy, ban expiry, warnings, reports,
-   invite hashing/revocation, append-only mod-log enforcement, pinned-feed
-   pagination, deleted-content visibility and comment pagination past 200
-   comments. They delete their own data. On a cold start, the Realtime
-   container can take up to a minute to finish booting after `supabase db
-   reset`; if only the Realtime check fails, wait for the stack to settle and
-   run again. The app falls back to polling if Realtime is unavailable.
+   `npm run test:rls` runs those three PostgREST suites. They create throwaway
+   users and cover direct privilege escalation, notification RLS, Realtime
+   INSERT/DELETE, rate-limit hints, cursor pagination, LIKE escaping, staff
+   hierarchy, last-admin concurrency, demotion immediacy, ban expiry, warnings,
+   reports, invite hashing/revocation, append-only mod-log enforcement,
+   pinned-feed pagination, deleted-content visibility, comment pagination past
+   200 comments, and (Phase 3) upload grants, safe views, quotas, linking
+   ownership, hash blocks, removal/restore, upload reports and unlinked-upload
+   expiry. They delete their own data. On a cold start, the Realtime container
+   can take up to a minute to finish booting after `supabase db reset`; if only
+   the Realtime check fails, wait for the stack to settle and run again. The
+   app falls back to polling if Realtime is unavailable.
+
+   The upload **route** has its own suite, `npm run test:http`. It rebuilds
+   with the local Supabase env, starts a fake catbox and the Next server, and
+   checks auth, origin handling, magic bytes, the streaming size cut-off, EXIF
+   stripping, quota, blocklist, removal and the CSP header. It never calls the
+   real catbox. Run it after `npm run build`-compatible local env is available;
+   the script rebuilds `.next` itself to bake in the local `NEXT_PUBLIC_*`
+   values.
 
 2. **Plain PostgreSQL Phase 1** (`supabase/tests/phase1_plain_postgres.sql`).
    Apply the migrations to PostgreSQL 17 with the stubbed `auth` schema
@@ -586,8 +652,17 @@ The repository has two PostgREST suites plus a plain-PostgreSQL suite:
   `20261106150000_invite_admin.sql`.
 - **“At least one admin must remain”** — the last-admin guard is working.
   Promote another admin first.
-- **A moderator cannot act on a thread or member** — check the target’s role.
+- **A moderator cannot act on a thread or member** — check the target's role.
   Moderators cannot act on admins or other moderators; admins can.
+- **"That file is too large" for a small file** — check `MEDIA_MAX_*_MB`; the
+  values are megabytes, and Next's proxy body limit
+  (`experimental.proxyClientMaxBodySize`) must stay above the video cap.
+- **Uploads fail with "The upload service didn't respond"** — catbox is down,
+  slow or blocking the server IP. Check `upload.provider_failed` events and
+  retry later; the user sees a generic message on purpose.
+- **"Removed by a moderator" never shows the file again** — restore the upload
+  in `/moderation/uploads` (or remove the hash block if the file was blocked
+  rather than removed).
 - **The mod log cannot be edited** — that is intentional. It is append-only
   through the API; use the SQL Editor only for incident recovery, not normal
   operation.
