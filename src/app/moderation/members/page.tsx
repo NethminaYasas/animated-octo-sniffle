@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 
 import { getServerSession } from "@/lib/auth/server-user";
 import { isBanActive } from "@/lib/ban";
@@ -42,6 +43,8 @@ export default async function ModerationMembersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await connection();
+
   const params = await searchParams;
   const rawUsername =
     typeof params.u === "string" ? params.u : "";
