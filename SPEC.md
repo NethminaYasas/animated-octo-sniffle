@@ -623,3 +623,70 @@ Apply these to every task.
 - `my_bans` and `my_warnings` became `SECURITY DEFINER` functions (pinned
   `search_path`) so the Supabase linter no longer reports security-definer
   views, while members still cannot read the issuing moderator.
+
+## Implementation decisions (Phase 4: modmail)
+
+- **No new env vars.** All Phase 4 SQL constants are documented in README.md
+  (MAX_OPEN_TICKETS=5, MAX_OPEN_BAN_APPEALS=1, REOPEN_WINDOW_DAYS=7,
+  RETENTION_DAYS=90, BAN_APPEAL_RETENTION_DAYS=365, MAX_TICKET_MESSAGES=200);
+  none are added to `.env.example`.
+- **Tables:** `modmail_tickets`, `modmail_messages`, `modmail_internal_notes`,
+  `modmail_mutes`. All RLS-enabled, no direct `anon`/`authenticated` grants.
+  Members read through `my_tickets()`/`my_messages()` (SECURITY DEFINER, safe
+  columns only: no staff IDs, no priority, `sender_kind` instead of `author_id`).
+- **Staff RPCs:** All SECURITY DEFINER with pinned `search_path`. Actor identity
+  is derived from `auth.uid()` for authenticated moderator/admin calls
+  (`reply_to_ticket`, `set_ticket_status`, `assign_ticket`, `mute_member`, etc.).
+  Staff server actions running with the service role pass the actor explicitly
+  via `can_staff_access_ticket_for(p_actor, p_ticket_id)`; the actor is never
+  client-supplied. SQL enforcement (`can_staff_access_ticket` in every RPC) is
+  the authoritative layer; application-layer filters only narrow listings.
+- **Conflict rules:** Staff cannot see or act on tickets where they are
+  `member_id` or `subject_user_id`; `admin_only` tickets are admin-only.
+  Enforced in `can_staff_access_ticket()` and every RPC.
+- **Ticket lifecycle:** Member opens → open. Staff reply: open → pending.
+  Member reply: pending → open, resolved → open (reopens, consumes
+  `reopen_count`; max 1 reopen within 7 days). Staff close: open → closed.
+  Closed tickets reject all replies. Staff can reopen closed tickets (mod-logged).
+- **Ban appeals:** Gated to effectively banned or recently banned members
+  (within 30 days). One open appeal per member. Ban appeals use the
+  `modmail_appeal` rate-limit bucket (1 per 24h). Banned members can reply to
+  their own ban appeal tickets.
+- **Mutes:** Moderators can mute non-appeal ticketing; only admins can mute
+  appeals. Muted members cannot open non-appeal tickets. `lifted_at` excludes
+  lifted mutes from active-mute checks.
+- **Internal notes:** Staff-only; `member_id` conflict check applied; never
+  exposed to members.
+- **Notifications:** `ticket_id` column on `notifications`; `actor_id` is NULL
+  (no staff identity); one unread per `(recipient, ticket)`.
+- **Retention:** `expire_modmail_tickets()` (service-role only) deletes
+  resolved/closed non-appeal tickets after 90 days and ban appeals after 365
+  days, logged to `security_events`.
+- **Realtime:** Modmail tables are NOT in `supabase_realtime`.
+
+## Rate limits (Phase 4 additions)
+
+| Action | Member limit | Window | Staff limit | Window |
+|---|---|---|---|---|
+| `modmail` | 10 | 900s | 30 | 900s |
+| `modmail_staff` | 5 | 900s | 60 | 900s |
+| `modmail_appeal` | 1 | 86400s | 1 | 86400s |
+| `moderation` | 5 | 900s | 60 | 900s |
+| `upload` | 20 | 900s | 60 | 900s |
+
+## Implementation notes
+
+- `consume_posting_rate_limit()` restores the effective-ban check
+  (`is_banned AND (banned_until IS NULL OR banned_until > now())`); ban appeals
+  (`modmail_appeal`) are exempt from the ban check since they exist for banned
+  members.
+- `open_ticket()` persists the opening message as the first
+  `modmail_messages` row and notifies the ticket member via
+  `notifications` (`modmail_new_ticket`, no staff identity).
+- `staff_open_ticket()` persists the opening message and notifies the target
+  member similarly.
+- Staff inbox listing filters in SQL: `.neq("member_id", user.id)`,
+  `.or("subject_user_id.is.null,subject_user_id.neq.<id>")`, and
+  `.eq("admin_only", false)` for moderators.
+- `getUnreadTicketCount()` applies the same conflict filters.
+

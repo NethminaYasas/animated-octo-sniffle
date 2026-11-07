@@ -681,16 +681,7 @@ export default function ThreadPageClient({
               isLocked: thread.isLocked,
               isPinned: thread.isPinned,
             }}
-          />
-          <ModerationControls
-            isStaff={isStaff}
-            target={{
-              type: "post",
-              id: openingPost.id,
-              threadId: thread.id,
-              label: "opening post",
-              isDeleted: openingPost.isDeleted,
-            }}
+            attachments={attachmentsByPost[openingPost.id] ?? []}
           />
         </div>
       </article>

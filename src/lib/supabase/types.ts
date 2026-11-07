@@ -260,6 +260,251 @@ export type Database = {
           },
         ];
       };
+      modmail_internal_notes: {
+        Row: {
+          author_id: string;
+          body: string;
+          created_at: string;
+          id: number;
+          ticket_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          author_id: string;
+          body: string;
+          created_at?: string;
+          id?: never;
+          ticket_id: string;
+        };
+        Update: {
+          author_id?: string;
+          body?: string;
+          created_at?: string;
+          id?: never;
+          ticket_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "modmail_internal_notes_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_internal_notes_ticket_id_fkey";
+            columns: ["ticket_id"];
+            isOneToOne: false;
+            referencedRelation: "modmail_tickets";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      modmail_messages: {
+        Row: {
+          author_id: string;
+          body: string;
+          created_at: string;
+          id: number;
+          ticket_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          author_id: string;
+          body: string;
+          created_at?: string;
+          id?: never;
+          ticket_id: string;
+        };
+        Update: {
+          author_id?: string;
+          body?: string;
+          created_at?: string;
+          id?: never;
+          ticket_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "modmail_messages_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_messages_ticket_id_fkey";
+            columns: ["ticket_id"];
+            isOneToOne: false;
+            referencedRelation: "modmail_tickets";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      modmail_mutes: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          expires_at: string | null;
+          id: number;
+          lift_reason: string | null;
+          lifted_at: string | null;
+          lifted_by: string | null;
+          member_id: string;
+          mute_appeals: boolean;
+          reason: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          expires_at?: string | null;
+          id?: never;
+          lift_reason?: string | null;
+          lifted_at?: string | null;
+          lifted_by?: string | null;
+          member_id: string;
+          mute_appeals?: boolean;
+          reason: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          expires_at?: string | null;
+          id?: never;
+          lift_reason?: string | null;
+          lifted_at?: string | null;
+          lifted_by?: string | null;
+          member_id?: string;
+          mute_appeals?: boolean;
+          reason?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "modmail_mutes_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_mutes_lifted_by_fkey";
+            columns: ["lifted_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_mutes_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      modmail_tickets: {
+        Row: {
+          admin_only: boolean;
+          assignee_id: string | null;
+          category: string;
+          closed_at: string | null;
+          closed_by: string | null;
+          created_at: string;
+          id: string;
+          last_message_at: string;
+          member_id: string;
+          opened_by: string | null;
+          priority: string;
+          reopen_count: number;
+          reopened_at: string | null;
+          resolved_at: string | null;
+          status: string;
+          status_changed_at: string;
+          subject: string;
+          subject_user_id: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          admin_only?: boolean;
+          assignee_id?: string | null;
+          category: string;
+          closed_at?: string | null;
+          closed_by?: string | null;
+          created_at?: string;
+          id?: string;
+          last_message_at?: string;
+          member_id: string;
+          opened_by?: string | null;
+          priority?: string;
+          reopen_count?: number;
+          reopened_at?: string | null;
+          resolved_at?: string | null;
+          status?: string;
+          status_changed_at?: string;
+          subject: string;
+          subject_user_id?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          admin_only?: boolean;
+          assignee_id?: string | null;
+          category?: string;
+          closed_at?: string | null;
+          closed_by?: string | null;
+          created_at?: string;
+          id?: string;
+          last_message_at?: string;
+          member_id?: string;
+          opened_by?: string | null;
+          priority?: string;
+          reopen_count?: number;
+          reopened_at?: string | null;
+          resolved_at?: string | null;
+          status?: string;
+          status_changed_at?: string;
+          subject?: string;
+          subject_user_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "modmail_tickets_assignee_id_fkey";
+            columns: ["assignee_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_tickets_closed_by_fkey";
+            columns: ["closed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_tickets_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_tickets_opened_by_fkey";
+            columns: ["opened_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "modmail_tickets_subject_user_id_fkey";
+            columns: ["subject_user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       notifications: {
         Row: {
           actor_id: string | null;
@@ -268,10 +513,11 @@ export type Database = {
           excerpt: string;
           id: number;
           kind: Database["public"]["Enums"]["notification_kind"];
-          post_id: number;
+          post_id: number | null;
           read_at: string | null;
-          thread_id: number;
-          thread_title: string;
+          thread_id: number | null;
+          thread_title: string | null;
+          ticket_id: string | null;
           user_id: string;
         };
         ComputedFields: never;
@@ -282,10 +528,11 @@ export type Database = {
           excerpt?: string;
           id?: never;
           kind: Database["public"]["Enums"]["notification_kind"];
-          post_id: number;
+          post_id?: number | null;
           read_at?: string | null;
-          thread_id: number;
-          thread_title: string;
+          thread_id?: number | null;
+          thread_title?: string | null;
+          ticket_id?: string | null;
           user_id: string;
         };
         Update: {
@@ -295,10 +542,11 @@ export type Database = {
           excerpt?: string;
           id?: never;
           kind?: Database["public"]["Enums"]["notification_kind"];
-          post_id?: number;
+          post_id?: number | null;
           read_at?: string | null;
-          thread_id?: number;
-          thread_title?: string;
+          thread_id?: number | null;
+          thread_title?: string | null;
+          ticket_id?: string | null;
           user_id?: string;
         };
         Relationships: [
@@ -321,6 +569,13 @@ export type Database = {
             columns: ["thread_id"];
             isOneToOne: false;
             referencedRelation: "threads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_ticket_id_fkey";
+            columns: ["ticket_id"];
+            isOneToOne: false;
+            referencedRelation: "modmail_tickets";
             referencedColumns: ["id"];
           },
           {
@@ -874,6 +1129,12 @@ export type Database = {
     };
     Functions: {
       acknowledge_warning: { Args: { p_warning_id: number }; Returns: boolean };
+      add_internal_note: {
+        Args: { p_message: string; p_ticket_id: string };
+        Returns: {
+          id: number;
+        }[];
+      };
       admin_create_invite_codes: {
         Args: { p_count: number; p_reason: string; p_request_id?: string };
         Returns: {
@@ -915,6 +1176,13 @@ export type Database = {
           mod_log_id: number;
         }[];
       };
+      assign_ticket: {
+        Args: { p_assignee_id: string; p_ticket_id: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
       consume_invite_code: { Args: { p_code: string }; Returns: boolean };
       consume_upload_quota: { Args: { p_bytes: number; p_user_id: string }; Returns: undefined };
       create_thread: {
@@ -924,6 +1192,14 @@ export type Database = {
           thread_id: number;
         }[];
       };
+      escalate_ticket: {
+        Args: { p_ticket_id: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      expire_modmail_tickets: { Args: Record<PropertyKey, never>; Returns: number };
       expire_unlinked_uploads: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -1065,6 +1341,18 @@ export type Database = {
           warning_id: number;
         }[];
       };
+      mute_member: {
+        Args: {
+          p_expires_at?: string;
+          p_member_id: string;
+          p_mute_appeals?: boolean;
+          p_reason: string;
+        };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
       my_bans: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -1077,6 +1365,28 @@ export type Database = {
           user_id: string;
         }[];
       };
+      my_messages: {
+        Args: { p_ticket_id: string };
+        Returns: {
+          body: string;
+          created_at: string;
+          id: number;
+          sender_kind: string;
+          ticket_id: string;
+        }[];
+      };
+      my_tickets: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          admin_only: boolean;
+          category: string;
+          created_at: string;
+          id: string;
+          last_message_at: string;
+          status: string;
+          subject: string;
+        }[];
+      };
       my_warnings: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -1085,6 +1395,17 @@ export type Database = {
           id: number;
           reason: string;
           user_id: string;
+        }[];
+      };
+      open_ticket: {
+        Args: {
+          p_category: string;
+          p_message: string;
+          p_subject: string;
+          p_subject_user_id?: string;
+        };
+        Returns: {
+          id: string;
         }[];
       };
       post_reaction_summary: {
@@ -1098,7 +1419,34 @@ export type Database = {
       };
       promote_member_roles: { Args: Record<PropertyKey, never>; Returns: number };
       recompute_reaction_score: { Args: { target_profile: string }; Returns: undefined };
+      reopen_my_ticket: { Args: { p_ticket_id: string }; Returns: boolean };
+      reply_to_ticket: {
+        Args: { p_message: string; p_ticket_id: string };
+        Returns: {
+          id: number;
+        }[];
+      };
       resolve_login_email: { Args: { lookup_username: string }; Returns: string };
+      set_ticket_priority: {
+        Args: { p_priority: string; p_ticket_id: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      set_ticket_status: {
+        Args: { p_status: string; p_ticket_id: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
+      staff_open_ticket: {
+        Args: { p_category: string; p_message: string; p_subject: string; p_target_id: string };
+        Returns: {
+          id: string;
+        }[];
+      };
       staff_resolve_report: {
         Args: {
           p_note: string;
@@ -1140,6 +1488,13 @@ export type Database = {
           total: number;
         }[];
       };
+      unmute_member: {
+        Args: { p_member_id: string; p_reason: string };
+        Returns: {
+          changed: boolean;
+          mod_log_id: number;
+        }[];
+      };
     };
     Enums: {
       media_kind: "image" | "video" | "audio";
@@ -1165,9 +1520,33 @@ export type Database = {
         | "upload.remove"
         | "upload.restore"
         | "upload.block_hash"
-        | "upload.unblock_hash";
-      mod_target_type: "post" | "thread" | "user" | "report" | "invite" | "upload" | "upload_hash";
-      notification_kind: "reply" | "quote" | "mention";
+        | "upload.unblock_hash"
+        | "modmail.ticket.staff_open"
+        | "modmail.ticket.status_change"
+        | "modmail.ticket.priority_change"
+        | "modmail.ticket.assign"
+        | "modmail.ticket.reopen"
+        | "modmail.ticket.close"
+        | "modmail.member_mute"
+        | "modmail.member_unmute"
+        | "modmail.retention_deleted";
+      mod_target_type:
+        | "post"
+        | "thread"
+        | "user"
+        | "report"
+        | "invite"
+        | "upload"
+        | "upload_hash"
+        | "modmail_ticket"
+        | "modmail_member_mute";
+      notification_kind:
+        | "reply"
+        | "quote"
+        | "mention"
+        | "modmail_new_ticket"
+        | "modmail_reply"
+        | "modmail_status_change";
       reaction_kind: "like" | "laugh" | "wow" | "anger" | "dislike";
       report_status: "open" | "resolved" | "dismissed";
       report_target_type: "post" | "user" | "upload";
@@ -1314,9 +1693,35 @@ export const Constants = {
         "upload.restore",
         "upload.block_hash",
         "upload.unblock_hash",
+        "modmail.ticket.staff_open",
+        "modmail.ticket.status_change",
+        "modmail.ticket.priority_change",
+        "modmail.ticket.assign",
+        "modmail.ticket.reopen",
+        "modmail.ticket.close",
+        "modmail.member_mute",
+        "modmail.member_unmute",
+        "modmail.retention_deleted",
       ],
-      mod_target_type: ["post", "thread", "user", "report", "invite", "upload", "upload_hash"],
-      notification_kind: ["reply", "quote", "mention"],
+      mod_target_type: [
+        "post",
+        "thread",
+        "user",
+        "report",
+        "invite",
+        "upload",
+        "upload_hash",
+        "modmail_ticket",
+        "modmail_member_mute",
+      ],
+      notification_kind: [
+        "reply",
+        "quote",
+        "mention",
+        "modmail_new_ticket",
+        "modmail_reply",
+        "modmail_status_change",
+      ],
       reaction_kind: ["like", "laugh", "wow", "anger", "dislike"],
       report_status: ["open", "resolved", "dismissed"],
       report_target_type: ["post", "user", "upload"],

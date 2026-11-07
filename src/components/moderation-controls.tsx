@@ -5,12 +5,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { BOARDS } from "@/lib/boards";
+import type { Attachment } from "@/lib/attachments";
 import {
   moveThread,
   setPostDeleted,
   setThreadDeleted,
   setThreadLocked,
   setThreadPinned,
+  setUploadRemoved,
 } from "@/lib/moderation/actions";
 
 type ModerationTarget =
@@ -31,15 +33,34 @@ type ModerationTarget =
       isDeleted: boolean;
     };
 
+type ActionOption = {
+  value: string;
+  label: string;
+};
+
 export function ModerationControls({
   target,
   isStaff,
+  attachments = [],
+  openingPostId,
+  openingPostDeleted,
 }: {
   target: ModerationTarget;
   isStaff: boolean;
+  attachments?: Attachment[];
+  openingPostId?: number;
+  openingPostDeleted?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [action, setAction] = useState(target.isDeleted ? "restore" : "delete");
+  const [action, setAction] = useState(
+    target.type === "thread"
+      ? target.isDeleted
+        ? "thread:restore"
+        : "thread:delete"
+      : target.isDeleted
+        ? "post:restore"
+        : "post:delete",
+  );
   const [reason, setReason] = useState("");
   const [boardId, setBoardId] = useState(
     target.type === "thread" ? target.boardId : "general",
@@ -51,17 +72,65 @@ export function ModerationControls({
     return null;
   }
 
-  const options =
-    target.type === "thread"
-      ? [
-          { value: target.isDeleted ? "restore" : "delete", label: target.isDeleted ? "Restore thread" : "Delete thread" },
-          { value: target.isLocked ? "unlock" : "lock", label: target.isLocked ? "Unlock thread" : "Lock thread" },
-          { value: target.isPinned ? "unpin" : "pin", label: target.isPinned ? "Unpin thread" : "Pin thread" },
-          { value: "move", label: "Move thread" },
-        ]
+  const targetLabel =
+    target.type === "thread" ? target.title : target.label;
+
+  const isThread = target.type === "thread";
+
+  // Composite values: target:action (thread:delete, post:restore, upload:<id>:remove)
+  const threadOptions: ActionOption[] = isThread
+    ? [
+        {
+          value: target.isDeleted ? "thread:restore" : "thread:delete",
+          label: target.isDeleted ? "Restore thread" : "Delete thread",
+        },
+        {
+          value: target.isLocked ? "thread:unlock" : "thread:lock",
+          label: target.isLocked ? "Unlock thread" : "Lock thread",
+        },
+        {
+          value: target.isPinned ? "thread:unpin" : "thread:pin",
+          label: target.isPinned ? "Unpin thread" : "Pin thread",
+        },
+        { value: "thread:move", label: "Move thread" },
+      ]
+    : [];
+
+  const postDeleted = isThread ? Boolean(openingPostDeleted) : target.isDeleted;
+  const postOptions: ActionOption[] =
+    isThread && openingPostId === undefined
+      ? []
       : [
-          { value: target.isDeleted ? "restore" : "delete", label: target.isDeleted ? "Restore post/comment" : "Delete post/comment" },
+          {
+            value: postDeleted ? "post:restore" : "post:delete",
+            label: isThread
+              ? postDeleted
+                ? "Restore opening post"
+                : "Delete opening post"
+              : postDeleted
+                ? "Restore post/comment"
+                : "Delete post/comment",
+          },
         ];
+
+  // Upload actions: one Remove/Restore option per attachment.
+  const uploadOptions: ActionOption[] = attachments.map((attachment) => ({
+    value: `upload:${attachment.id}:${
+      attachment.status === "removed" ? "restore" : "remove"
+    }`,
+    label:
+      attachment.status === "removed"
+        ? `Restore attachment (${attachment.mimeType})`
+        : `Remove attachment (${attachment.mimeType})`,
+  }));
+
+  // Parse the composite value into target kind and action.
+  const [actionTarget, actionVerb] = action.split(":") as [
+    "thread" | "post" | "upload",
+    string,
+  ];
+
+  const isUploadAction = actionTarget === "upload";
 
   const submit = async () => {
     if (submitting) {
@@ -74,39 +143,60 @@ export function ModerationControls({
     try {
       let result;
 
-      if (target.type === "thread") {
-        if (action === "delete" || action === "restore") {
+      if (isUploadAction) {
+        // Handle upload remove/restore.
+        const [, uploadId, mode] = action.split(":");
+        result = await setUploadRemoved({
+          uploadId,
+          removed: mode === "remove",
+          reason,
+        });
+      } else if (actionTarget === "thread") {
+        if (actionVerb === "delete" || actionVerb === "restore") {
           result = await setThreadDeleted({
             threadId: target.id,
-            deleted: action === "delete",
+            deleted: actionVerb === "delete",
             reason,
           });
-        } else if (action === "lock" || action === "unlock") {
+        } else if (actionVerb === "lock" || actionVerb === "unlock") {
           result = await setThreadLocked({
             threadId: target.id,
-            locked: action === "lock",
+            locked: actionVerb === "lock",
             reason,
           });
-        } else if (action === "pin" || action === "unpin") {
+        } else if (actionVerb === "pin" || actionVerb === "unpin") {
           result = await setThreadPinned({
             threadId: target.id,
-            pinned: action === "pin",
+            pinned: actionVerb === "pin",
             reason,
           });
-        } else {
+        } else if (actionVerb === "move") {
           result = await moveThread({
             threadId: target.id,
             boardId,
             reason,
           });
         }
-      } else {
+      } else if (actionTarget === "post") {
+        const postId =
+          target.type === "thread" ? openingPostId : target.id;
+        const threadId =
+          target.type === "thread" ? target.id : target.threadId;
+        if (postId === undefined || threadId === undefined) {
+          setError("Unknown moderation action");
+          return;
+        }
         result = await setPostDeleted({
-          postId: target.id,
-          threadId: target.threadId,
-          deleted: action === "delete",
+          postId,
+          threadId,
+          deleted: actionVerb === "delete",
           reason,
         });
+      }
+
+      if (!result) {
+        setError("Unknown moderation action");
+        return;
       }
 
       if (!result.ok) {
@@ -157,7 +247,7 @@ export function ModerationControls({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-ink">
-                  Moderate {target.type === "thread" ? target.title : target.label}
+                  Moderate {targetLabel}
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-muted">
                   Every action requires a reason and is recorded in the mod log.
@@ -177,18 +267,39 @@ export function ModerationControls({
               Action
               <select
                 value={action}
-                onChange={(event) => setAction(event.target.value)}
+                onChange={(event) =>
+                  setAction(event.target.value as string)}
                 className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-orange-700"
               >
-                {options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+                {threadOptions.length > 0 && (
+                  <optgroup label="Thread">
+                    {threadOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label={isThread ? "Opening post" : "Post"}>
+                  {postOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {uploadOptions.length > 0 && (
+                  <optgroup label="Attachments">
+                    {uploadOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
 
-            {target.type === "thread" && action === "move" ? (
+            {target.type === "thread" && action === "thread:move" ? (
               <label className="mt-3 block text-xs font-medium text-muted">
                 Move to board
                 <select

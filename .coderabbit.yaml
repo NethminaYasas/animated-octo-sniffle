@@ -78,3 +78,34 @@ reviews:
         Check that tests exercise real RLS through PostgREST or an
         authenticated database role, not service-role shortcuts. Flag tests
         that create a false sense of security by bypassing RLS.
+    - path: "src/app/modmail/**"
+      instructions: |
+        Check member-facing modmail pages: tickets are scoped to the member's
+        own member_id, staff IDs (assignee_id, opened_by, closed_by, author_id)
+        are never exposed, my_tickets()/my_messages() return safe columns only,
+        ban appeals are gated to banned/recently-banned members, open-ticket cap
+        is enforced, replies respect status transitions and rate limits, and
+        closed tickets reject replies.
+    - path: "src/app/moderation/modmail/**"
+      instructions: |
+        Check staff modmail pages: staff cannot access tickets where they are
+        member_id or subject_user_id, admin_only tickets restricted to admins,
+        conflict rules enforced in can_staff_access_ticket and every RPC, status
+        state-machine validations, assign_ticket validates staff assignee and
+        conflicts, escalate_ticket is admin-only, and internal notes are never
+        exposed to members.
+    - path: "src/lib/modmail/**"
+      instructions: |
+        Check modmail server actions and RPCs: all functions are SECURITY DEFINER
+        with pinned search_path, actor derived from auth.uid() or explicit service
+        role parameter (never client-supplied), rate limits use consume_posting_rate_limit
+        with modmail/modmail_staff/modmail_appeal buckets, ban appeals use modmail_appeal
+        bucket (1 per 24h), open_ticket caps at 5 non-appeal tickets, reopen once
+        within 7 days, and expire_modmail_tickets is service-role only.
+    - path: "supabase/migrations/20261108**"
+      instructions: |
+        Check modmail migrations: all tables RLS-enabled with explicit policies,
+        no direct anon/authenticated grants, can_staff_access_ticket and
+        can_staff_access_ticket_for enforce conflict rules, consume_posting_rate_limit
+        restored with effective ban check (is_banned AND not expired), and
+        no unintended replacement of earlier Phase 1-3 functions.

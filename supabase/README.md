@@ -63,6 +63,34 @@ Run every file in `migrations/` in filename order:
 24. `20261107120000_safe_moderation_views.sql` - replaces the `my_bans` and
     `my_warnings` views with `SECURITY DEFINER` functions so the Supabase
     linter stops flagging security-definer views.
+25. `20261108100000_modmail_enums.sql` - Phase 4 enums: notification kinds
+    (`modmail_new_ticket`, `modmail_reply`, `modmail_status_change`), mod log
+    actions/target types (`modmail.ticket.*`, `modmail.member_mute`,
+    `modmail.retention_deleted`), rate-limit bucket actions
+    (`modmail`, `modmail_staff`, `modmail_appeal`, `moderation`, `upload`).
+    Restores `consume_posting_rate_limit()` with effective-ban check and all
+    action handlers.
+26. `20261108110000_modmail_tables.sql` - `modmail_tickets`,
+    `modmail_messages`, `modmail_internal_notes`, `modmail_mutes` tables with
+    RLS enabled; no direct `anon`/`authenticated` grants.
+27. `20261108120000_modmail_rls.sql` - RLS policies and
+    `kaluwo_private.can_staff_access_ticket()` conflict helper.
+28. `20261108130000_modmail_rpcs.sql` - All modmail RPCs:
+    `open_ticket`, `reopen_my_ticket`, `staff_open_ticket`, `reply_to_ticket`,
+    `add_internal_note`, `assign_ticket`, `set_ticket_status`,
+    `set_ticket_priority`, `escalate_ticket`, `mute_member`, `unmute_member`.
+29. `20261108140000_modmail_notifications.sql` - `ticket_id` column on
+    `notifications`; unique index per `(recipient, ticket)`.
+30. `20261108150000_modmail_cleanup.sql` - `expire_modmail_tickets()`
+    service-role cleanup (90 days non-appeal, 365 days ban appeal).
+31. `20261108160000_modmail_member_rpcs.sql` - Safe member-facing
+    `my_tickets()` and `my_messages()` SECURITY DEFINER functions.
+32. `20261108170000_modmail_staff_access.sql` -
+    `kaluwo_private.can_staff_access_ticket_for()` with explicit actor ID.
+33. `20261108180000_modmail_rate_limit_fix.sql` - Restores effective-ban check
+    in `consume_posting_rate_limit()`; adds `modmail_appeal` bucket; fixes
+    `open_ticket()` to persist opening message + notification; fixes
+    `mute_member()` to exclude lifted mutes.
 
 Migration 11 needs the `pg_cron` extension. Supabase normally allows the
 migration to create it; if not, enable **pg_cron** under

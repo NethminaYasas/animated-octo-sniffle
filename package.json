@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:rls": "node tests/phase1-rls.mjs && node tests/phase2-rls.mjs && node tests/phase3-rls.mjs",
+    "test:rls": "node tests/phase1-rls.mjs && node tests/phase2-rls.mjs && node tests/phase3-rls.mjs && node tests/phase4-rls.mjs && node tests/phase4-moderate-controls.mjs",
     "test:http": "node tests/phase3-http.mjs",
     "uploads:cleanup": "node scripts/cleanup-uploads.mjs"
   },

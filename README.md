@@ -695,6 +695,46 @@ personal data.**
 - In production, provide secrets through the hosting environment, not through
   Git.
 
+## Phase 4: Modmail (moderation tickets)
+
+Modmail lets members open tickets to staff and lets staff manage them through
+a dedicated inbox at `/moderation/modmail`.
+
+### SQL constants (documented here, not in `.env.example`)
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `MAX_OPEN_TICKETS` | 5 | Max open non-appeal tickets per member |
+| `MAX_OPEN_BAN_APPEALS` | 1 | Max open ban appeals per member |
+| `REOPEN_WINDOW_DAYS` | 7 | Days within which a member can reopen once |
+| `RETENTION_DAYS` | 90 | Days after which resolved/closed non-appeal tickets are purged |
+| `BAN_APPEAL_RETENTION_DAYS` | 365 | Days after which resolved/closed ban appeals are purged |
+| `MAX_TICKET_MESSAGES` | 200 | Max messages per ticket |
+
+### Key design decisions
+
+- **No new env vars.** All Phase 4 configuration lives in SQL constants above;
+  none are added to `.env.example`.
+- **Member tickets (`/modmail`):** Members see only their own tickets through
+  `my_tickets()` (safe columns: no staff IDs, no priority) and `my_messages()`
+  (returns `sender_kind`, not `author_id`).
+- **Staff inbox (`/moderation/modmail`):** Staff see tickets via audited server
+  actions. Conflict rules: staff cannot see or act on tickets where they are
+  `member_id` or `subject_user_id`; `admin_only` tickets are admin-only.
+- **Ban appeals:** Gated to members who are effectively banned or banned within
+  the last 30 days. One open appeal per member. Ban appeals use their own
+  rate-limit bucket (`modmail_appeal`: 1 per 24h).
+- **Status machine:** Staff reply: open → pending. Member reply: pending → open,
+  resolved → open (reopens, consumes reopen_count). Closed tickets reject all
+  replies.
+- **Mod log:** All state changes are append-only through `write_mod_log()`.
+- **No direct table access:** `anon`/`authenticated` have no table grants;
+  members read through `my_tickets()`/`my_messages()`, staff through audited
+  RPCs.
+- **Notifications:** `ticket_id` column on `notifications`; `actor_id` is NULL
+  (no staff identity); one unread per `(recipient, ticket)`. Modmail tables are
+  NOT in the Realtime publication.
+
 ## Specification
 
 The full product and security specification lives in [SPEC.md](./SPEC.md).
