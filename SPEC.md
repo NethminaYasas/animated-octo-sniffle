@@ -463,6 +463,28 @@ Apply these to every task.
 - The home, create and thread pages read the query string/path after mount
   instead of `useSearchParams`/`useParams`. This avoids the Next 16 Cache
   Components Suspense stall on these client-rendered pages.
+- Drag-drop and paste of images into the editor upload through the same
+  `POST /api/uploads` pipeline (magic bytes, quotas, EXIF stripping) and
+  insert `<img>` at the caret. Each inserted image is also linked into
+  `post_uploads` so the render-time upload gate passes; the gallery hides
+  inline images for members (staff still see them) to avoid duplicates.
+- Inline image width uses `data-width` (integer percent 15–100). Both the
+  server sanitiser and `rehype-sanitize` accept only that range; an inline
+  `style` width from the live editor is stripped before storage and
+  re-applied on render. Resizing is via the orange corner drag handle
+  (plus Arrow Left/Right on the focused handle and Delete to remove).
+- Reactions use insert-then-update by `kind`, never PostgREST upsert: the
+  `reactions` UPDATE grant is column-limited to `kind` so a reaction cannot
+  be moved to another post, and an upsert requires table-level UPDATE.
+  `23505` (unique conflict) falls back to `UPDATE reactions SET kind`.
+- Reaction breakdowns show each non-zero kind with its count. Clicking a
+  count opens a dialog with an **All** tab and one tab per kind, listing
+  reactor usernames (and avatars) via a public `reactions` + `profiles`
+  read. The breakdown renders for logged-out viewers and authors too; only
+  the react button is restricted.
+- The header re-checks the session on pathname change (behind a Suspense
+  boundary in the root layout), so a server-action login shows the profile
+  icon without a refresh. `usePathname()` is never called outside Suspense.
 
 ## Implementation decisions (Google auth and invite codes)
 

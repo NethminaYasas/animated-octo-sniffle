@@ -112,7 +112,13 @@ const sanitizeSchema: SanitizeOptions = {
       ["dataSize", "sm", "md", "lg", "xl"],
       ["dataMention", "true"],
     ],
-    img: ["src", "alt", "title", "loading"],
+    img: [
+      "src",
+      "alt",
+      "title",
+      "loading",
+      ["dataWidth", ...Array.from({ length: 86 }, (_, i) => String(i + 15))],
+    ],
     video: ["src", "controls", "preload", "width", "height"],
     audio: ["src", "controls", "preload"],
     source: ["src", "type"],
@@ -153,11 +159,20 @@ function standaloneLinkUrl(node?: Element): string | null {
   return typeof href === "string" ? href : null;
 }
 
+function parseImageWidth(value: unknown): number | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const width = Number.parseInt(value, 10);
+  return Number.isInteger(width) && width >= 15 && width <= 100 ? width : null;
+}
+
 function renderMedia(
   tag: "img" | "video" | "audio",
   src: string | undefined,
   uploadStates: Record<string, UploadState | undefined> | undefined,
   alt?: string | undefined,
+  imageWidth?: number | null,
 ) {
   if (!src || !isMediaUrl(src)) {
     // Not a host we trust: render as a plain link.
@@ -181,14 +196,18 @@ function renderMedia(
 
   if (tag === "img") {
     // Attachments come from our own upload pipeline and are the only remote
-    // images the app renders.
+    // images the app renders. `data-width` is an integer percent (15–100)
+    // chosen by the author with the editor resize handle.
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt={alt ?? ""}
         loading="lazy"
-        className="max-h-96 w-auto max-w-full rounded-lg border border-line"
+        {...(imageWidth !== null && imageWidth !== undefined
+          ? { "data-width": String(imageWidth), style: { width: `${imageWidth}%` } }
+          : {})}
+        className={`${imageWidth ? "" : "max-h-96 "}w-auto max-w-full rounded-lg border border-line`}
       />
     );
   }
@@ -270,9 +289,14 @@ export function MarkdownContent({
 
             return <span className={className || undefined}>{children}</span>;
           },
-          img: ({ src, alt }) =>
-            renderMedia("img", typeof src === "string" ? src : undefined, uploadStates,
-              typeof alt === "string" ? alt : undefined),
+          img: ({ node, src, alt }) =>
+            renderMedia(
+              "img",
+              typeof src === "string" ? src : undefined,
+              uploadStates,
+              typeof alt === "string" ? alt : undefined,
+              parseImageWidth(node?.properties?.dataWidth),
+            ),
           video: ({ src }) =>
             renderMedia("video", typeof src === "string" ? src : undefined, uploadStates),
           audio: ({ src }) =>

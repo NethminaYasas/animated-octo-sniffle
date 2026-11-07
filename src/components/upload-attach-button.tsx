@@ -4,20 +4,14 @@ import { Loader2, Paperclip, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-export type PendingAttachment = {
-  id: string;
-  url: string;
-  mimeType: string;
-  sizeBytes: number;
-  fileName: string;
-};
+import {
+  MAX_ATTACHMENTS,
+  UPLOAD_ACCEPT,
+  uploadFilesToServer,
+  type PendingAttachment,
+} from "@/lib/upload-client";
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const MAX_ATTACHMENTS = 8;
-const ACCEPT =
-  "image/jpeg,image/png,image/webp,image/gif,audio/mpeg,audio/ogg,video/mp4,video/webm";
+export type { PendingAttachment };
 
 /**
  * Uploads files through the same-origin `/api/uploads` route. The server
@@ -28,10 +22,14 @@ export function UploadAttachButton({
   attachments,
   onChange,
   disabled,
+  inlineUrls,
 }: {
   attachments: PendingAttachment[];
   onChange: (next: PendingAttachment[]) => void;
   disabled?: boolean;
+  /** URLs already inserted inline in the editor. They hang off the body and
+   * need no chip — delete the image itself to remove them. */
+  inlineUrls?: ReadonlySet<string>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -51,54 +49,20 @@ export function UploadAttachButton({
     setUploading((count) => count + 1);
 
     try {
-      const current = [...attachments];
+      const remaining = MAX_ATTACHMENTS - attachments.length;
+      const { attachments: uploaded, errors } = await uploadFilesToServer(
+        Array.from(files),
+        { max: remaining },
+      );
 
-      for (const file of Array.from(files).slice(0, MAX_ATTACHMENTS - current.length)) {
-        const formData = new FormData();
-        formData.append("file", file, file.name);
+      for (const error of errors) {
+        toast.error("Couldn't upload the file", {
+          description: error.error,
+        });
+      }
 
-        try {
-          const response = await fetch("/api/uploads", {
-            method: "POST",
-            body: formData,
-          });
-          const body = (await response.json().catch(() => null)) as
-            | {
-                ok?: boolean;
-                error?: string;
-                upload?: {
-                  id: string;
-                  url: string;
-                  mimeType: string;
-                  sizeBytes: number;
-                };
-              }
-            | null;
-
-          if (!response.ok || !body?.ok || !body.upload) {
-            toast.error("Couldn't upload the file", {
-              description: body?.error ?? "Try again in a few moments.",
-            });
-            continue;
-          }
-
-          if (!UUID_PATTERN.test(body.upload.id)) {
-            continue;
-          }
-
-          current.push({
-            id: body.upload.id,
-            url: body.upload.url,
-            mimeType: body.upload.mimeType,
-            sizeBytes: body.upload.sizeBytes,
-            fileName: file.name,
-          });
-          onChange([...current]);
-        } catch {
-          toast.error("Couldn't upload the file", {
-            description: "Check your connection and try again.",
-          });
-        }
+      if (uploaded.length > 0) {
+        onChange([...attachments, ...uploaded]);
       }
     } finally {
       setUploading((count) => Math.max(0, count - 1));
@@ -114,7 +78,7 @@ export function UploadAttachButton({
       <input
         ref={inputRef}
         type="file"
-        accept={ACCEPT}
+        accept={UPLOAD_ACCEPT}
         multiple
         hidden
         aria-hidden="true"
@@ -139,7 +103,9 @@ export function UploadAttachButton({
         )}
       </button>
 
-      {attachments.map((attachment) => (
+      {attachments
+        .filter((attachment) => !inlineUrls?.has(attachment.url))
+        .map((attachment) => (
         <span
           key={attachment.id}
           className="flex max-w-48 items-center gap-1.5 rounded-full border border-line bg-surface-muted px-2 py-1 text-[11px] font-medium text-body"
@@ -156,7 +122,7 @@ export function UploadAttachButton({
             <X className="size-3" />
           </button>
         </span>
-      ))}
+        ))}
     </div>
   );
 }

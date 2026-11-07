@@ -7,6 +7,7 @@ import { ChevronDown, Check, Send } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
 import { UploadAttachButton, type PendingAttachment } from "@/components/upload-attach-button";
+import { extractInlineUploadUrls } from "@/lib/attachments";
 
 import { BackHomeButton } from "@/components/back-home-button";
 import { ForumShell } from "@/components/forum-shell";
@@ -278,6 +279,16 @@ function CreatePostForm({ isNewMember }: { isNewMember: boolean }) {
           onChange={setContent}
           placeholder="Say something interesting…"
           ariaLabel="Post body"
+          attachments={attachments}
+          onAttachmentsAdded={(added) =>
+            setAttachments((current) => [...current, ...added])
+          }
+          onAttachmentRemoved={(url) =>
+            setAttachments((current) =>
+              current.filter((attachment) => attachment.url !== url),
+            )
+          }
+          disabled={submitting}
           onSubmit={() => {
             void handleSubmitPost();
           }}
@@ -287,6 +298,7 @@ function CreatePostForm({ isNewMember }: { isNewMember: boolean }) {
             attachments={attachments}
             onChange={setAttachments}
             disabled={submitting}
+            inlineUrls={extractInlineUploadUrls(content)}
           />
         </div>
       </div>

@@ -39,9 +39,14 @@ const ALLOWED_TAGS = [
 const INLINE_SIZES = new Set(["sm", "md", "lg", "xl"]);
 
 /**
- * Keeps a media tag only when its src is an https URL on an upload host,
- * otherwise rewrites it to a plain text link (matching the render path).
+ * Display width for inline images, stored as an integer percent in
+ * `data-width` (e.g. "42"). Only 15–100 are accepted; anything else is
+ * dropped so a crafted value cannot become arbitrary CSS.
  */
+export const IMAGE_WIDTHS = new Set(
+  Array.from({ length: 86 }, (_, i) => String(i + 15)),
+);
+
 function mediaTag(
   tag: "img" | "video" | "audio" | "source",
   attribs: Record<string, string | undefined>,
@@ -62,6 +67,13 @@ function mediaTag(
 
     if (value !== undefined && value !== "") {
       next[attribute] = value;
+    }
+  }
+
+  if (tag === "img") {
+    const width = attribs["data-width"]?.trim();
+    if (width && IMAGE_WIDTHS.has(width)) {
+      next["data-width"] = width;
     }
   }
 
@@ -102,7 +114,7 @@ export function sanitiseRichText(input: string): string {
     allowedAttributes: {
       a: ["href", "title", "target", "rel"],
       span: ["data-size"],
-      img: ["src", "alt", "title", "loading"],
+      img: ["src", "alt", "title", "loading", "data-width"],
       video: ["src", "controls", "preload"],
       audio: ["src", "controls", "preload"],
       source: ["src", "type"],

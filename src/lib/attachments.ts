@@ -17,6 +17,21 @@ export type Attachment = {
 /** Status of an upload URL, used to gate inline markdown media. */
 export type UploadState = AttachmentStatus;
 
+/**
+ * Upload URLs already shown inline in a post/comment body. Members see the
+ * inline placement only; the gallery would otherwise render the same image a
+ * second time below the post.
+ */
+export function extractInlineUploadUrls(html: string): Set<string> {
+  const urls = new Set<string>();
+  const pattern = /<img[^>]+src="([^"]+)"/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(html)) !== null) {
+    urls.add(match[1]);
+  }
+  return urls;
+}
+
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return "0 B";

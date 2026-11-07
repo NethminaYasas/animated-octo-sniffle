@@ -139,11 +139,14 @@ export function AttachmentGallery({
   isStaff,
   currentUserId,
   onStatusChange,
+  inlineUrls,
 }: {
   attachments: Attachment[];
   isStaff: boolean;
   currentUserId: string | null;
   onStatusChange?: (id: string, status: "active" | "removed") => void;
+  /** URLs already rendered inline in the post body. Hidden for members. */
+  inlineUrls?: ReadonlySet<string>;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<
@@ -151,7 +154,16 @@ export function AttachmentGallery({
     | null
   >(null);
 
-  if (attachments.length === 0) {
+  // Images dropped into the editor appear inline where the author placed
+  // them; showing them again below would be a duplicate for members. Staff
+  // keep them so per-attachment report and remove/restore stay reachable
+  // (comment Moderate menus have no attachments).
+  const visible = attachments.filter(
+    (attachment) =>
+      isStaff || !attachment.url || !inlineUrls?.has(attachment.url),
+  );
+
+  if (visible.length === 0) {
     return null;
   }
 
@@ -189,7 +201,7 @@ export function AttachmentGallery({
   return (
     <>
       <div className="mt-3 flex flex-wrap gap-3">
-        {attachments.map((attachment) => {
+        {visible.map((attachment) => {
           if (attachment.status === "removed") {
             return (
               <div

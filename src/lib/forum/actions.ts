@@ -699,19 +699,34 @@ export async function setPostReaction(input: {
     return { ok: true };
   }
 
-  const { error } = await supabase
-    .from("reactions")
-    .upsert(
-      {
-        post_id: postId,
-        user_id: user.id,
-        kind,
-      },
-      { onConflict: "post_id,user_id" },
-    );
+  // The reactions UPDATE grant is column-limited to `kind` so a reaction
+  // cannot be moved to another post. A PostgREST upsert needs table-level
+  // UPDATE (it rewrites every column on conflict) and is rejected with
+  // "permission denied". Insert first; on a unique conflict update `kind`
+  // only, which is exactly what the grant allows.
+  const { error: insertError } = await supabase.from("reactions").insert({
+    post_id: postId,
+    user_id: user.id,
+    kind,
+  });
 
-  if (error) {
-    console.error("reaction upsert failed:", error.message);
+  if (!insertError) {
+    return { ok: true };
+  }
+
+  if (insertError.code !== "23505") {
+    console.error("reaction insert failed:", insertError.message);
+    return failure("Could not update your reaction.");
+  }
+
+  const { error: updateError } = await supabase
+    .from("reactions")
+    .update({ kind })
+    .eq("post_id", postId)
+    .eq("user_id", user.id);
+
+  if (updateError) {
+    console.error("reaction update failed:", updateError.message);
     return failure("Could not update your reaction.");
   }
 

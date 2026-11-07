@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -116,6 +116,7 @@ function writeCachedHeaderUser(user: HeaderUser | null) {
 
 export function SiteHeader() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<HeaderUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -292,7 +293,7 @@ export function SiteHeader() {
       active = false;
       unsubscribe?.();
     };
-  }, []);
+  }, [pathname]);
 
   // Persist the resolved member so the next refresh can paint the real name
   // immediately. Logging out clears the entry.

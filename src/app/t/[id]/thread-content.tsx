@@ -42,7 +42,11 @@ import { addQuote } from "@/lib/quotes";
 import { emptyReactionCounts } from "@/lib/reactions";
 import { hasRichText } from "@/lib/rich-text";
 import { formatRelativeTime } from "@/lib/time";
-import type { Attachment, UploadState } from "@/lib/attachments";
+import {
+  extractInlineUploadUrls,
+  type Attachment,
+  type UploadState,
+} from "@/lib/attachments";
 
 type ReplyTarget = { id: number; author: string };
 
@@ -641,6 +645,7 @@ export default function ThreadPageClient({
               isStaff={isStaff}
               currentUserId={viewer?.id ?? null}
               onStatusChange={setAttachmentStatus}
+              inlineUrls={extractInlineUploadUrls(openingPost.body)}
             />
           </div>
         ) : null}
@@ -766,6 +771,7 @@ export default function ThreadPageClient({
                           isStaff={isStaff}
                           currentUserId={viewer?.id ?? null}
                           onStatusChange={setAttachmentStatus}
+                          inlineUrls={extractInlineUploadUrls(comment.body)}
                         />
                       </div>
 
@@ -905,6 +911,16 @@ export default function ThreadPageClient({
                 onChange={setDraft}
                 placeholder="What are your thoughts?"
                 ariaLabel="Comment body"
+                attachments={pendingAttachments}
+                onAttachmentsAdded={(added) =>
+                  setPendingAttachments((current) => [...current, ...added])
+                }
+                onAttachmentRemoved={(url) =>
+                  setPendingAttachments((current) =>
+                    current.filter((attachment) => attachment.url !== url),
+                  )
+                }
+                disabled={submitting || !canPost}
                 onSubmit={() => {
                   void handleSubmitComment();
                 }}
@@ -917,6 +933,7 @@ export default function ThreadPageClient({
                   attachments={pendingAttachments}
                   onChange={setPendingAttachments}
                   disabled={submitting || !canPost}
+                  inlineUrls={extractInlineUploadUrls(draft)}
                 />
               </div>
 

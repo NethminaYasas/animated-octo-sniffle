@@ -169,11 +169,23 @@ the editor's Text size control applies to the text you select or type next.
 
 - Comments are listed **above** the comment composer, so the discussion stays
   in view while you write.
+- The post/comment editor supports **drag-drop and paste** for images: drop
+  one or more image files onto the editor, or paste (Ctrl+V) a screenshot,
+  and the image uploads through `/api/uploads` and inserts inline at the
+  caret. Audio/video still use the paperclip attach button (gallery only).
+- Click an inserted image to select it, then drag the orange corner handle
+  to resize it (15–100% of the editor width). New inserts start at 50%.
+  Arrow Left/Right on the focused handle adjusts by 5%; Delete/Backspace
+  removes the selected image. The width is stored as `data-width`
+  (integer percent), preserved by the server sanitiser and applied again
+  on render.
 - Members can react to other members' posts and comments with like, laugh,
   wow, anger or dislike. The primary **Like** button likes on a click or tap;
-  hover it (desktop) or press and hold (touch) to pick another emoji. Your own
-  content does not show reaction buttons, and the RLS policy rejects the write
-  even if the UI is bypassed.
+  hover it (desktop) or press and hold (touch) to pick another emoji. Each
+  reaction kind with at least one vote shows its emoji and count; click any
+  count to open a panel with an **All** tab plus one tab per kind, listing
+  who reacted. Your own content shows the breakdown but no react button,
+  and the RLS policy rejects the write even if the UI is bypassed.
 - Banned members can still react, but cannot post or comment.
 - **Reply** copies the comment and its author to the quote clipboard and marks
   the reply target. The composer shows who you are replying to.

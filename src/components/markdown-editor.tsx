@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -24,12 +25,21 @@ import {
   X,
   Check,
   ClipboardPaste,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { MarkdownContent } from "@/components/markdown-content";
 import { quoteToHtml } from "@/lib/mentions";
 import { clearQuotes, removeQuote, useQuotes } from "@/lib/quotes";
 import { hasRichText } from "@/lib/rich-text";
+import {
+  MAX_ATTACHMENTS,
+  isImageFile,
+  uploadFilesToServer,
+  type PendingAttachment,
+} from "@/lib/upload-client";
 
 const INLINE_SIZES = {
   sm: "Small",
@@ -38,6 +48,14 @@ const INLINE_SIZES = {
 } as const;
 
 type InlineSize = keyof typeof INLINE_SIZES;
+
+const MIN_IMAGE_WIDTH = 15;
+const MAX_IMAGE_WIDTH = 100;
+const DEFAULT_IMAGE_WIDTH = 50;
+
+function clampImageWidth(width: number): number {
+  return Math.min(MAX_IMAGE_WIDTH, Math.max(MIN_IMAGE_WIDTH, width));
+}
 
 export type MarkdownEditorProps = {
   id?: string;
@@ -50,6 +68,11 @@ export type MarkdownEditorProps = {
   onEditorReady?: (element: HTMLDivElement | null) => void;
   /** Show the copied-quotes clipboard. Used by the comment composer. */
   quoteClipboard?: boolean;
+  /** Enables drag-drop/paste image upload and the resize handle. */
+  attachments?: PendingAttachment[];
+  onAttachmentsAdded?: (added: PendingAttachment[]) => void;
+  onAttachmentRemoved?: (url: string) => void;
+  disabled?: boolean;
 };
 
 function ToolbarButton({
@@ -85,6 +108,10 @@ export function MarkdownEditor({
   onSubmit,
   onEditorReady,
   quoteClipboard = false,
+  attachments,
+  onAttachmentsAdded,
+  onAttachmentRemoved,
+  disabled = false,
 }: MarkdownEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const setRefs = useCallback(
@@ -104,6 +131,127 @@ export function MarkdownEditor({
   const quotes = useQuotes();
   const previousQuoteCount = useRef(quotes.length);
   const textSizeId = id ? `${id}-text-size` : "markdown-text-size";
+
+  // Drag-drop / paste image upload.
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const dragCountRef = useRef(0);
+  const uploadingRef = useRef(false);
+  const attachmentsRef = useRef<PendingAttachment[]>(attachments ?? []);
+  useEffect(() => {
+    attachmentsRef.current = attachments ?? [];
+  }, [attachments]);
+  // URLs inserted by this editor session. The parent adds them to
+  // `attachments` too, but this keeps Preview correct before that lands.
+  const [sessionImageUrls, setSessionImageUrls] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const sessionImageUrlsRef = useRef<Set<string>>(sessionImageUrls);
+  useEffect(() => {
+    sessionImageUrlsRef.current = sessionImageUrls;
+  }, [sessionImageUrls]);
+
+  // Image selection + resize handle.
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(
+    null,
+  );
+  const selectedImageRef = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    selectedImageRef.current = selectedImage;
+  }, [selectedImage]);
+  const [handlePos, setHandlePos] = useState({ left: 0, top: 0 });
+  const resizeDragRef = useRef<{
+    startX: number;
+    startWidthPx: number;
+    containerWidth: number;
+  } | null>(null);
+  const onAttachmentsAddedRef = useRef(onAttachmentsAdded);
+  const onAttachmentRemovedRef = useRef(onAttachmentRemoved);
+  const disabledRef = useRef(disabled);
+  useEffect(() => {
+    onAttachmentsAddedRef.current = onAttachmentsAdded;
+    onAttachmentRemovedRef.current = onAttachmentRemoved;
+    disabledRef.current = disabled;
+  }, [onAttachmentsAdded, onAttachmentRemoved, disabled]);
+
+  const updateHandlePos = useCallback((img: HTMLImageElement) => {
+    const rect = img.getBoundingClientRect();
+    setHandlePos({ left: rect.right - 8, top: rect.bottom - 8 });
+  }, []);
+
+  const deselectImage = useCallback(() => {
+    const current = selectedImageRef.current;
+    if (current) {
+      current.classList.remove("editor-image-selected");
+    }
+    selectedImageRef.current = null;
+    setSelectedImage(null);
+  }, []);
+
+  const selectImage = useCallback(
+    (img: HTMLImageElement) => {
+      const previous = selectedImageRef.current;
+      if (previous && previous !== img) {
+        previous.classList.remove("editor-image-selected");
+      }
+      img.classList.add("editor-image-selected");
+      selectedImageRef.current = img;
+      setSelectedImage(img);
+      updateHandlePos(img);
+    },
+    [updateHandlePos],
+  );
+
+  // Kept attached so the floating resize handle follows its image while the
+  // page scrolls or the viewport changes.
+  useEffect(() => {
+    if (!selectedImage) {
+      return;
+    }
+    const reposition = () => {
+      const current = selectedImageRef.current;
+      if (current) {
+        updateHandlePos(current);
+      }
+    };
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("load", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("load", reposition);
+    };
+  }, [selectedImage, updateHandlePos]);
+
+  // If the value is replaced externally, a selected image may be gone.
+  useEffect(() => {
+    const current = selectedImageRef.current;
+    if (current && !current.isConnected) {
+      selectedImageRef.current = null;
+      setSelectedImage(null);
+    }
+  }, [value]);
+
+  // Apply stored `data-width` values as inline widths. The stored HTML is
+  // canonical (data-width only); the live editor needs a real width to show
+  // continuous drag handles, so we re-apply it after every sync.
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) {
+      return;
+    }
+    el.querySelectorAll("img[data-width]").forEach((node) => {
+      const img = node as HTMLImageElement;
+      const width = Number.parseInt(
+        img.getAttribute("data-width") ?? "",
+        10,
+      );
+      if (Number.isInteger(width) && width >= MIN_IMAGE_WIDTH && width <= MAX_IMAGE_WIDTH) {
+        img.style.width = `${width}%`;
+      }
+    });
+  }, [value]);
 
   // Keep the editor in sync with external value changes without replacing the
   // DOM (and losing the caret) on every keystroke.
@@ -170,7 +318,7 @@ export function MarkdownEditor({
     selection.addRange(range);
   };
 
-  const syncValue = () => {
+  const syncValue = useCallback(() => {
     const el = editorRef.current;
 
     if (!el) {
@@ -178,13 +326,16 @@ export function MarkdownEditor({
     }
 
     const text = el.textContent?.replace(/\u200B/g, "") ?? "";
+    // `data-width` is the source of truth. The inline `style` width stays in
+    // the value so it matches `innerHTML`; the server sanitiser and
+    // `rehype-sanitize` both drop `style`.
     const html = el.innerHTML.replace(/\u200B/g, "");
     const hasContentElement = Array.from(el.querySelectorAll("*")).some(
       (node) => !["br", "p", "div"].includes(node.tagName.toLowerCase()),
     );
 
     onChange(text.trim() === "" && !hasContentElement ? "" : html);
-  };
+  }, [onChange]);
 
   const exec = (command: string, value?: string) => {
     const range = getActiveRange();
@@ -389,7 +540,260 @@ export function MarkdownEditor({
     }
   };
 
+  const insertImage = useCallback(
+    (attachment: PendingAttachment) => {
+      const el = editorRef.current;
+      if (!el) {
+        return;
+      }
+
+      const img = document.createElement("img");
+      img.src = attachment.url;
+      img.alt = attachment.fileName;
+      img.setAttribute("data-width", String(DEFAULT_IMAGE_WIDTH));
+      img.setAttribute("loading", "lazy");
+      img.style.width = `${DEFAULT_IMAGE_WIDTH}%`;
+      img.addEventListener("load", () => {
+        if (selectedImageRef.current === img) {
+          updateHandlePos(img);
+        }
+      });
+
+      const range = getActiveRange();
+      focusEditor();
+
+      const after = document.createElement("p");
+      after.innerHTML = "<br>";
+
+      if (range) {
+        restoreRange(range);
+        range.deleteContents();
+        range.insertNode(after);
+        range.insertNode(img);
+        const next = document.createRange();
+        next.setStartAfter(after);
+        next.collapse(true);
+        restoreRange(next);
+        savedRangeRef.current = next.cloneRange();
+      } else {
+        el.append(img, after);
+      }
+
+      deselectImage();
+      syncValue();
+      // Select what we just inserted so the author can resize it right away.
+      selectImage(img);
+    },
+    [deselectImage, selectImage, syncValue, updateHandlePos],
+  );
+
+  const handleImageFiles = useCallback(
+    async (files: File[]) => {
+      if (disabledRef.current || uploadingRef.current) {
+        return;
+      }
+
+      const images = files.filter(isImageFile);
+      if (images.length === 0) {
+        toast.error("Only images can be inserted into the editor", {
+          description: "Use the paperclip button for audio and video.",
+        });
+        return;
+      }
+
+      const remaining =
+        MAX_ATTACHMENTS - attachmentsRef.current.length;
+      if (remaining <= 0) {
+        toast.error("A post can have at most 8 attachments.");
+        return;
+      }
+
+      uploadingRef.current = true;
+      setUploadingImages(true);
+
+      try {
+        const { attachments: uploaded, errors } = await uploadFilesToServer(
+          images,
+          { max: remaining },
+        );
+
+        for (const error of errors) {
+          toast.error("Couldn't upload the file", {
+            description: error.error,
+          });
+        }
+
+        if (uploaded.length === 0) {
+          return;
+        }
+
+        setSessionImageUrls((current) => {
+          const next = new Set(current);
+          for (const attachment of uploaded) {
+            next.add(attachment.url);
+          }
+          return next;
+        });
+
+        for (const attachment of uploaded) {
+          insertImage(attachment);
+        }
+
+        onAttachmentsAddedRef.current?.(uploaded);
+        toast.success(
+          uploaded.length === 1
+            ? "Image inserted"
+            : `${uploaded.length} images inserted`,
+        );
+      } finally {
+        uploadingRef.current = false;
+        setUploadingImages(false);
+      }
+    },
+    [insertImage],
+  );
+
+  const setCaretFromPoint = useCallback((clientX: number, clientY: number) => {
+    const el = editorRef.current;
+    if (!el || typeof document.caretRangeFromPoint !== "function") {
+      return;
+    }
+    const range = document.caretRangeFromPoint(clientX, clientY);
+    if (range && el.contains(range.commonAncestorContainer)) {
+      savedRangeRef.current = range.cloneRange();
+    }
+  }, []);
+
+  const handleDragEnter = (event: ReactDragEvent) => {
+    if (disabled || uploadingImages || mode !== "write") {
+      return;
+    }
+    if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) {
+      return;
+    }
+    event.preventDefault();
+    dragCountRef.current += 1;
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (event: ReactDragEvent) => {
+    if (mode !== "write") {
+      return;
+    }
+    if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = () => {
+    dragCountRef.current = Math.max(0, dragCountRef.current - 1);
+    if (dragCountRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (event: ReactDragEvent) => {
+    event.preventDefault();
+    dragCountRef.current = 0;
+    setIsDragging(false);
+    if (disabled || uploadingRef.current || mode !== "write") {
+      return;
+    }
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+    setCaretFromPoint(event.clientX, event.clientY);
+    void handleImageFiles(files);
+  };
+
+  const handleEditorClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    const img = target?.closest("img");
+    if (img && editorRef.current?.contains(img)) {
+      selectImage(img);
+    } else {
+      deselectImage();
+    }
+  };
+
+  const handleResizePointerDown = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const img = selectedImageRef.current;
+    const el = editorRef.current;
+    if (!img || !el || disabled) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
+    resizeDragRef.current = {
+      startX: event.clientX,
+      startWidthPx: img.getBoundingClientRect().width,
+      containerWidth: el.clientWidth,
+    };
+  };
+
+  const handleResizePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const img = selectedImageRef.current;
+    const drag = resizeDragRef.current;
+    if (!img || !drag) {
+      return;
+    }
+    event.preventDefault();
+    const containerWidth = editorRef.current?.clientWidth ?? drag.containerWidth;
+    const nextPx = drag.startWidthPx + (event.clientX - drag.startX);
+    const percent = clampImageWidth(Math.round((nextPx / containerWidth) * 100));
+    img.setAttribute("data-width", String(percent));
+    img.style.width = `${percent}%`;
+    updateHandlePos(img);
+  };
+
+  const handleResizePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeDragRef.current) {
+      return;
+    }
+    event.preventDefault();
+    resizeDragRef.current = null;
+    syncValue();
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Leave image mode on any key other than deletion so a later Backspace
+    // while typing does not delete the previously selected image.
+    if (
+      selectedImageRef.current &&
+      !["Delete", "Backspace", "Shift", "Control", "Meta", "Alt"].includes(
+        event.key,
+      )
+    ) {
+      deselectImage();
+    }
+
+    const selected = selectedImageRef.current;
+    if (
+      selected &&
+      (event.key === "Delete" || event.key === "Backspace")
+    ) {
+      event.preventDefault();
+      const src = selected.getAttribute("src") ?? "";
+      deselectImage();
+      selected.remove();
+      if (src) {
+        onAttachmentRemovedRef.current?.(src);
+        setSessionImageUrls((current) => {
+          const next = new Set(current);
+          next.delete(src);
+          return next;
+        });
+      }
+      syncValue();
+      return;
+    }
+
     const mod = event.ctrlKey || event.metaKey;
 
     if (!mod) {
@@ -414,6 +818,22 @@ export function MarkdownEditor({
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = Array.from(event.clipboardData?.items ?? []);
+    const imageFiles = items
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    // Some sources (spreadsheets, office apps) put both text and an image
+    // preview on the clipboard. Only upload when there is no text, so we
+    // never silently drop pasted text.
+    const pastedText = event.clipboardData?.getData("text/plain") ?? "";
+    if (imageFiles.length > 0 && pastedText === "") {
+      event.preventDefault();
+      void handleImageFiles(imageFiles);
+      return;
+    }
+
     event.preventDefault();
     const text = event.clipboardData.getData("text/plain");
     document.execCommand("insertText", false, text);
@@ -449,8 +869,45 @@ export function MarkdownEditor({
     }, 0);
   };
 
+  const previewUploadStates = (() => {
+    const states: Record<string, "active"> = {};
+    for (const attachment of attachments ?? []) {
+      states[attachment.url] = "active";
+    }
+    for (const url of sessionImageUrls) {
+      states[url] = "active";
+    }
+    return states;
+  })();
+
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-surface">
+    <div
+      className="relative overflow-hidden rounded-lg border border-line bg-surface"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-30 grid place-items-center bg-orange-700/10"
+        >
+          <div className="flex items-center gap-2 rounded-full border border-orange-700 bg-surface px-4 py-2 text-sm font-semibold text-orange-800 shadow-lg dark:text-orange-200">
+            <ImagePlus className="size-4" />
+            Drop images to insert
+          </div>
+        </div>
+      ) : null}
+      {uploadingImages ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-center gap-2 bg-surface/80 py-2 text-xs font-semibold text-muted backdrop-blur-sm"
+        >
+          <Loader2 className="size-3.5 animate-spin" />
+          Uploading image…
+        </div>
+      ) : null}
       <div
         role="tablist"
         aria-label="Editor mode"
@@ -702,20 +1159,22 @@ export function MarkdownEditor({
             role="textbox"
             aria-multiline="true"
             aria-label={ariaLabel}
-            contentEditable
+            contentEditable={!disabled}
             suppressContentEditableWarning
             suppressHydrationWarning
             data-placeholder={placeholder}
             onInput={syncValue}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            onClick={handleEditorClick}
             className="rich-editor block w-full whitespace-pre-wrap break-words bg-surface px-3 py-3 text-base leading-relaxed text-ink focus:outline-none"
             style={{ minHeight: `${Math.max(rows, 4) * 1.75}rem` }}
           />
           <div className="flex items-center justify-between border-t border-line px-3 py-2 text-xs text-faint">
             <span>
-              Formatted text is saved with your post. Paste a supported link on
-              its own line to embed it.
+              {selectedImage
+                ? "Drag the orange handle to resize. Press Delete to remove."
+                : "Formatted text is saved with your post. Drop or paste images to insert them. Paste a supported link on its own line to embed it."}
             </span>
             <span aria-live="polite">Ctrl+Enter</span>
           </div>
@@ -731,10 +1190,47 @@ export function MarkdownEditor({
               Nothing to preview yet. Start writing in the Write tab.
             </p>
           ) : (
-            <MarkdownContent>{value}</MarkdownContent>
+            <MarkdownContent uploadStates={previewUploadStates}>
+              {value}
+            </MarkdownContent>
           )}
         </div>
       )}
+      {mode === "write" && selectedImage ? (
+        <div
+          role="slider"
+          aria-label="Resize image"
+          aria-valuemin={MIN_IMAGE_WIDTH}
+          aria-valuemax={MAX_IMAGE_WIDTH}
+          aria-valuenow={Number.parseInt(
+            selectedImage.getAttribute("data-width") ?? String(DEFAULT_IMAGE_WIDTH),
+            10,
+          )}
+          tabIndex={0}
+          className="editor-image-resize-handle"
+          style={{ left: handlePos.left, top: handlePos.top }}
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+          onKeyDown={(event) => {
+            const target = selectedImageRef.current;
+            if (!target || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) {
+              return;
+            }
+            event.preventDefault();
+            const current = Number.parseInt(
+              target.getAttribute("data-width") ?? String(DEFAULT_IMAGE_WIDTH),
+              10,
+            );
+            const delta = event.key === "ArrowRight" ? 5 : -5;
+            const next = clampImageWidth(current + delta);
+            target.setAttribute("data-width", String(next));
+            target.style.width = `${next}%`;
+            updateHandlePos(target);
+            syncValue();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

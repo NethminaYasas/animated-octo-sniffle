@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 import { Noto_Sans_Sinhala, Noto_Sans_Tamil } from "next/font/google";
 
 import { SiteHeader } from "@/components/site-header";
@@ -53,7 +54,20 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <SiteHeader />
+        <Suspense
+          fallback={
+            <header
+              aria-hidden="true"
+              className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface"
+            >
+              <div className="mx-auto flex h-14 max-w-[90rem] items-center gap-3 px-3 sm:px-4">
+                <div className="h-7 w-28 animate-pulse rounded bg-surface-muted" />
+              </div>
+            </header>
+          }
+        >
+          <SiteHeader />
+        </Suspense>
         {children}
       </body>
     </html>
